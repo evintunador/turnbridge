@@ -1,62 +1,99 @@
 # WIP technical design
 
-**Status:** exploratory; adapter feasibility must be validated per CLI.
+**Status:** MVP implemented for Claude Code ⇄ Codex; fabrication adapters are
+version-pinned and must be revalidated per CLI release.
 
 ## Main flow
 
-1. A source adapter discovers and tails the CLI's local transcript/session
-   artifacts without modifying them.
-2. After each completed visible turn, it normalizes newly observed material and
-   appends it to Conversation Ledger.
-3. A unified picker lists conversations compatible with the current repository,
-   branch, `HEAD`, and user-selected sharing mode.
-4. Native records for the selected CLI use its normal resume command. Imported
-   records start a fresh target session and provide the complete canonical
-   transcript as bootstrap context.
+1. Conversation Ledger's hooks (`cledger install all`) capture each CLI's
+   local transcript incrementally into git notes as normalized
+   `conversation_turn` events, stamped with the repo's git identity
+   (`actor.id` = `user.email`) on human turns.
+2. `turnbridge resume [claude|codex]` lists conversations compatible with the
+   current repository state: events anchored to commits reachable from `HEAD`
+   (`--any-commit` lifts this), authored by you or unattributed
+   (`--all` includes collaborators).
+3. Selecting a conversation whose source matches the target CLI delegates to
+   that CLI's native resume.
+4. Cross-CLI selections default to **native fabrication**: turnbridge writes a
+   target-native session file from the canonical events and launches the
+   target's own resume on it. `--bootstrap` (also the automatic fallback when
+   fabrication is unsupported or fails validation) starts a fresh target
+   session whose first prompt instructs it to read the literal transcript.
 
-## Adapter contract
+## Module map
 
-Each adapter must declare:
+- `src/conversations.ts` — ledger read + grouping + ownership/compat filter.
+- `src/resume.ts` — picker flow, target choice, default-target config.
+- `src/targets/*` — per-CLI `TargetAdapter`: `nativeResume`, `fabricate`,
+  `bootstrap`. Fabrication throws `FabricationUnsupportedError` to trigger the
+  fallback.
+- `src/transcript.ts` + `src/bootstrap.ts` — literal markdown rendering and
+  the rehydration prompt; reports estimated token size before launch.
+- `src/shim.ts` — opt-in PATH shims: bare `claude --resume` / `codex resume`
+  open the merged picker; everything else passes through to the real binary.
 
-- transcript discovery and incremental cursor semantics;
-- how it identifies completed versus partial turns;
-- role/content/tool-call normalization rules;
-- repository/session identity extraction;
-- known omissions and safe failure behavior.
+## Division of labor with Conversation Ledger
 
-Adapters are readers first. Writing fabricated provider-native sessions may be
-explored as an optional, version-pinned optimization but is not required for a
-functional bridge and must never be the only recovery path.
+The ledger owns capture (adapters, cursors, idempotent event ids, git-notes
+storage, explicit sync). Turnbridge never parses source transcripts itself and
+is a reader plus a writer of *target-native* session files. It writes exactly
+one kind of ledger event — `continuation` lineage edges (below) — and no
+conversation content. Ledger changes made for turnbridge: a library entry
+point (`package.json` exports) and human-turn identity stamping.
 
-The first Claude adapter should evaluate a pinned integration with an existing
-local transcript extractor rather than reimplementing its format parser. The
-wrapper still owns an incremental cursor and must tolerate schema changes and
-incomplete final lines.
+## Conversation lineage (branch-on-bridge)
 
-## Rehydration
+Bridging is a fork, not a move. Fabricating a target session writes a real
+native file; when the user continues there, the target CLI captures it as a
+new conversation whose id is the session id turnbridge generated (verified:
+Codex resume preserves the id and appends). The source conversation still
+exists, so both are resumable — a genuine branch, like a git fork.
 
-The target adapter receives canonical events in order and constructs the
-smallest supported bootstrap mechanism: an initial prompt, a local transcript
-file plus an instruction to read it, or another documented import surface.
-The UI must say that the target is a new rehydrated session. It must preserve
-literal content, avoid silently summarizing, and report context-size limits
-before launch.
+To keep that honest instead of confusing, at fabricate time turnbridge appends
+a `continuation` event (`links: [{rel:"continues", target:<source>}]`, content
+carries `imported_through_seq`) belonging to the target conversation. The
+picker reads these and labels rows in both directions (`→ bridged to Codex`,
+`↳ continued from Claude Code`); re-bridging a conversation that already
+embeds imported history is allowed but flagged. The default listing shows
+both branch endpoints — abandonment is not assumed. The same edge is what lets
+a downstream consumer (intent-recall) de-duplicate the copied prefix: target
+turns `0..imported_through_seq` are known copies of the source, not fresh
+evidence, so turnbridge does not need to alter capture to avoid double-count.
 
-## CLI UX proposal
+## Fabrication contract (per target adapter)
 
-An executable shim may intercept familiar forms such as `claude --resume` and
-offer a merged picker. Selecting a native Claude conversation delegates to
-Claude. Selecting a Codex-origin conversation launches Claude through the
-rehydration path instead. Equivalent wrappers can serve other supported CLIs.
+- Pin the CLI versions the writer was validated against; on an unknown version
+  warn and offer bootstrap.
+- Write only new session files under the CLI's own session directory; never
+  modify existing native sessions.
+- Represent foreign tool calls faithfully (or as clearly-labeled text when the
+  target rejects unknown tool schemas — see per-adapter spec notes).
+- Label the session as imported in its first visible message.
 
-Default listings show only the current user's records that are compatible with
-the checked-out code. Future cross-user mode expands the list with clear author
-and code-state labels.
+Reverse-engineered, empirically verified format specs (pinned versions,
+minimal working schemas, unknowns): [docs/specs/claude-session-format.md](specs/claude-session-format.md)
+and [docs/specs/codex-rollout-format.md](specs/codex-rollout-format.md).
+Key constraints: Claude resume is scoped to the project dir encoded from the
+launch cwd and reconstructs history by walking `parentUuid` from the last
+line; Codex resume-by-id scans `~/.codex/sessions` for a matching filename +
+`session_meta` id, and only plain `message` response_items are verified-safe
+to replay (foreign tool calls fold into labeled text). Claude accepts foreign
+`tool_use` names verbatim, so Codex→Claude keeps structured tool history.
+
+## Sharing model
+
+`actor.id`/`actor.display` come from `git config user.email/name` at capture
+time. Default listings: own + unattributed conversations; `--all` shows every
+author with labels. Transport is Conversation Ledger's explicit `cledger sync`
+(git notes push/fetch); turnbridge adds no network behavior. Events captured
+before identity stamping existed are unattributed; a forced transcript rescan
+after the upgrade can duplicate those turns under new event ids.
 
 ## Risks
 
-Native formats can change without notice; transcript content can include
-secrets; full histories consume substantial context; terminal processes can
-crash mid-turn. The MVP must retain raw incremental capture, present partial
-capture honestly, and provide redaction/local-only controls before any
-automatic sharing is enabled.
+Native formats change without notice (fabrication is version-pinned, bootstrap
+is the recovery path); transcript content can include secrets (ledger-side
+redaction is still an open roadmap item — review before `cledger sync`); full
+histories can exceed the target's context (size is reported before launch);
+crashes mid-turn leave partial capture, which the ledger tolerates by design.
