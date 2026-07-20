@@ -28,7 +28,11 @@ unless you ask for everyone's.
 - Never claim to transfer hidden reasoning, private provider state, or an
   exact native session; a fabricated session is labeled as imported.
 - Put the developer in control of capture, sharing, and deletion. Sharing is
-  explicit (`cledger sync`); listings default to the current user's records.
+  a deliberate choice, not a side effect: today it is an explicit
+  `cledger sync`; the decided direction (see Conversation Ledger's design
+  doc) is optional-but-default-on transport hooks so records ride normal
+  `git push`/`pull`, gated by the ledger's secret scan and disableable per
+  user. Listings default to the current user's records.
 
 ## Non-goals
 
