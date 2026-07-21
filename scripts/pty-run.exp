@@ -1,0 +1,47 @@
+#!/usr/bin/expect -f
+# Pty runner for the interactive smoke test: spawns the target CLI in a real
+# pty (works with piped stdin, unlike macOS `script`), logs all terminal
+# output, auto-accepts a first-visit trust prompt, waits for the render to
+# accumulate, then quits the TUI without ever submitting a prompt.
+#
+# usage: pty-run.exp <logfile> <settle-seconds> <command> [args...]
+set logf [lindex $argv 0]
+set settle [lindex $argv 1]
+set stty_init "rows 40 cols 120"
+log_file -noappend $logf
+
+spawn -noecho {*}[lrange $argv 2 end]
+
+# Collect output for the settle window; the only pattern we act on is a
+# trust/onboarding prompt (Enter accepts the default "trust/proceed" option).
+# Matching the bare word: TUIs position words with cursor moves, so multi-word
+# phrases are unreliable in the raw stream. Sent at most once — later "trust"
+# occurrences (e.g. in rendered history) must not inject stray Enters.
+# exp_continue restarts the window, extending the wait past the prompt.
+set trusted 0
+set timeout $settle
+expect {
+    -re {[Tt]rust} {
+        if {$trusted == 0} {
+            set trusted 1
+            sleep 1
+            send "\r"
+        }
+        exp_continue
+    }
+    timeout {}
+    eof { exit 3 }
+}
+
+# Quit: interrupt (twice — both TUIs want a confirming second press), then
+# Ctrl+D, then a hard kill so the harness never hangs on a stuck TUI.
+set timeout 6
+send "\x03"
+sleep 0.6
+send "\x03"
+sleep 0.6
+expect eof { exit 0 }
+send "\x04"
+expect eof { exit 0 }
+exec kill -9 [exp_pid]
+exit 0
