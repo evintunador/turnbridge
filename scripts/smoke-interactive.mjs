@@ -8,10 +8,15 @@
  * This covers what the headless verification (`claude -p`, `codex exec`)
  * cannot: the TUI render path users actually see. See docs/specs/* "Unknowns".
  *
- * Usage: node scripts/smoke-interactive.mjs [claude-code|codex|all]
+ * Usage: node scripts/smoke-interactive.mjs [claude-code|codex|all] [--manual]
  * Env:   SMOKE_KEEP=1 keeps the temp repo and fabricated session files.
  * Artifacts (raw + ANSI-stripped pty captures) land in a temp dir printed at
  * the end — review the stripped capture for visual glitches by eye too.
+ *
+ * --manual: fabricate the sessions but launch nothing — print the exact
+ * commands to run in a normal terminal so a human can judge the TUI render
+ * (stripped pty captures cannot prove the screen *looked* right; the Codex
+ * empty-scrollback bug was exactly this class of failure). Keeps everything.
  */
 import { spawn } from "node:child_process";
 import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
@@ -47,7 +52,7 @@ async function makeSeededRepo(artifactsDir) {
   if (!repo) throw new Error("failed to init smoke repo");
 
   const conversationId = `claude-code:${crypto.randomUUID()}`;
-  const turn = (role, text, seq) => ({
+  const turn = (role, text, seq, blocks) => ({
     kind: "conversation_turn",
     occurred_at: `2026-01-01T00:00:0${seq}.000Z`,
     actor:
@@ -60,7 +65,7 @@ async function makeSeededRepo(artifactsDir) {
       session_id: conversationId.split(":")[1],
     },
     conversation: { id: conversationId, seq },
-    content: { role, blocks: [{ type: "text", text }] },
+    content: { role, blocks: blocks ?? [{ type: "text", text }] },
   });
   await appendEvents(repo, [
     turn("user", `${USER_MARKER}: please remember this exact marker phrase.`, 0),
@@ -69,6 +74,29 @@ async function makeSeededRepo(artifactsDir) {
       `Understood — the marker is ${ASSISTANT_MARKER} and I will recall it on request.`,
       1,
     ),
+    // Rendering-shape coverage for human inspection: multi-line text with a
+    // list and a code fence, and an assistant turn with a thinking block
+    // (folds to labeled text during fabrication).
+    turn(
+      "user",
+      [
+        "Second check — does structured text survive the bridge visually?",
+        "- bullet one",
+        "- bullet two",
+        "",
+        "```js",
+        'console.log("fenced code block");',
+        "```",
+      ].join("\n"),
+      2,
+    ),
+    turn("assistant", null, 3, [
+      { type: "thinking", text: "A short thinking block that fabrication folds into labeled text." },
+      {
+        type: "text",
+        text: "Multi-line reply:\n1. numbered item\n2. another item\n\nAnd a closing paragraph.",
+      },
+    ]),
   ]);
   await writeFile(join(artifactsDir, "repo-path.txt"), dir + "\n");
   return { repo, conversationId };
@@ -155,11 +183,52 @@ async function smokeTarget(name, repo, conversationId, artifactsDir) {
   };
 }
 
-const pick = process.argv[2] ?? "all";
+const argv = process.argv.slice(2);
+const manual = argv.includes("--manual");
+const pick = argv.find((a) => !a.startsWith("--")) ?? "all";
 const names = pick === "all" ? ["claude-code", "codex"] : [pick];
 const artifactsDir = await mkdtemp(join(tmpdir(), "turnbridge-smoke-artifacts-"));
 await mkdir(artifactsDir, { recursive: true });
 const { repo, conversationId } = await makeSeededRepo(artifactsDir);
+
+if (manual) {
+  const out = [];
+  out.push("", "Manual TUI inspection — sessions fabricated, nothing launched.", "");
+  for (const name of names) {
+    const target = targetFor(name);
+    if (!(await target.isInstalled())) {
+      out.push(`[skip] ${name}: ${target.binary} not on PATH`, "");
+      continue;
+    }
+    const summary = (await listConversations(repo, { all: true })).find(
+      (c) => c.id === conversationId,
+    );
+    const plan = await target.fabricate(summary, repo.root);
+    out.push(
+      `[${name}] run this in a normal terminal (not inside another agent session):`,
+      "",
+      `    cd ${repo.root} && ${plan.command} ${plan.args.join(" ")}`,
+      "",
+      ...plan.notes.map((n) => `    note: ${n}`),
+      "",
+    );
+  }
+  out.push(
+    "What to check on screen:",
+    `  1. The import notice renders as the first message.`,
+    `  2. All four turns are visible in the scrollback — user marker "${USER_MARKER}",`,
+    `     assistant marker "${ASSISTANT_MARKER}", the bullets/code-fence turn, and the`,
+    `     "[visible thinking]" + numbered-list turn. (Past bug: model saw the context`,
+    `     but the TUI scrollback rendered empty.)`,
+    "  3. No mangled spacing/wrapping, stray JSON, or escape-code artifacts.",
+    "  4. Quit without sending a prompt (Ctrl+C twice) — or send one to verify recall.",
+    "",
+    `Repo and sessions are kept. Temp repo: ${repo.root}`,
+    "",
+  );
+  process.stderr.write(out.join("\n"));
+  process.exit(0);
+}
 
 const results = [];
 for (const name of names) {
