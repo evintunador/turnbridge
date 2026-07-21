@@ -1,0 +1,88 @@
+# Watches the target CLIs' npm releases and flags when they move outside the
+# version prefixes the fabrication adapters were validated against
+# (docs/specs/ are reverse-engineered and version-pinned by design).
+#
+# Stage 1 (active): daily check → open/update a pinned tracking issue.
+# Stage 2 (commented): hand the issue to a Claude Code action run that
+# re-verifies the spec against the new release and drafts a revalidation PR.
+# Enabling stage 2 needs an ANTHROPIC_API_KEY repo secret — see the TODO.
+name: adapter-drift
+on:
+  schedule:
+    - cron: "17 6 * * *"
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    outputs:
+      drift: ${{ steps.drift.outputs.drift }}
+      report: ${{ steps.drift.outputs.report }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - id: drift
+        run: node scripts/check-adapter-drift.mjs || [ $? -eq 2 ]
+
+  file-issue:
+    needs: check
+    if: needs.check.outputs.drift == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+    steps:
+      - uses: actions/github-script@v7
+        env:
+          REPORT: ${{ needs.check.outputs.report }}
+        with:
+          script: |
+            const title = "Adapter drift: target CLI released outside validated version range";
+            const open = await github.rest.issues.listForRepo({
+              ...context.repo, state: "open", labels: "adapter-drift",
+            });
+            const body = process.env.REPORT +
+              "\n\n_Automated by .github/workflows/adapter-drift.yml — updates daily while drift persists._";
+            if (open.data.length > 0) {
+              await github.rest.issues.update({
+                ...context.repo, issue_number: open.data[0].number, body,
+              });
+            } else {
+              await github.rest.issues.create({
+                ...context.repo, title, body, labels: ["adapter-drift"],
+              });
+            }
+
+  # TODO(stage 2): agent-drafted revalidation PR. Uncomment once an
+  # ANTHROPIC_API_KEY secret is configured and the repo is comfortable letting
+  # CI push branches. The agent re-reads the pinned spec, diffs it against the
+  # new CLI release's session format, and opens a draft PR (spec amendments +
+  # VALIDATED_VERSION_PREFIX bump) or reports that a human is needed.
+  #
+  # draft-pr:
+  #   needs: [check, file-issue]
+  #   if: needs.check.outputs.drift == 'true'
+  #   runs-on: ubuntu-latest
+  #   permissions:
+  #     contents: write
+  #     pull-requests: write
+  #   steps:
+  #     - uses: actions/checkout@v4
+  #     - uses: anthropics/claude-code-action@v1
+  #       with:
+  #         anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+  #         prompt: |
+  #           ${{ needs.check.outputs.report }}
+  #
+  #           Install the drifted CLI release(s), re-verify the fabrication
+  #           spec(s) named above against them (headless probes only), amend
+  #           the spec docs and VALIDATED_VERSION_PREFIX if the format is
+  #           unchanged, run `npm test`, and open a DRAFT pull request with
+  #           your findings. If the format changed materially, do not guess:
+  #           open the PR with the spec diff annotated as needing human
+  #           validation via `npm run smoke:interactive`.
