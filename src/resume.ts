@@ -4,6 +4,7 @@ import { loadConfig, saveConfig } from "./config.js";
 import { listConversations } from "./conversations.js";
 import { recordContinuation, readLineage, type Lineage } from "./lineage.js";
 import { runLaunchPlan } from "./launch.js";
+import { withLedgerNotices } from "./ledger-io.js";
 import { confirm, pickFromList } from "./picker.js";
 import { installedTargets, targetFor } from "./targets/index.js";
 import { FabricationUnsupportedError, type LaunchPlan, type TargetAdapter } from "./targets/types.js";
@@ -150,14 +151,17 @@ export async function resumeCommand(flags: ResumeFlags): Promise<number> {
     return 1;
   }
   const identity = await gitUserIdentity(repo);
-  const [conversations, lineage] = await Promise.all([
-    listConversations(repo, {
+  // Sequential, not Promise.all: each ledger read may run lazy maintenance
+  // (notes merge, re-anchor append) — concurrent calls race on the same
+  // refs and cursor file. The second read's maintenance pass is a no-op.
+  const [conversations, lineage] = await withLedgerNotices(async () => {
+    const convs = await listConversations(repo, {
       all: flags.all ?? false,
       user: identity.email ?? undefined,
       anyCommit: flags.anyCommit ?? false,
-    }),
-    readLineage(repo, flags.anyCommit ?? false),
-  ]);
+    });
+    return [convs, await readLineage(repo, flags.anyCommit ?? false)] as const;
+  });
 
   if (conversations.length === 0) {
     process.stderr.write(

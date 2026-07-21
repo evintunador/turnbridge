@@ -27,6 +27,11 @@ export async function cleanupRepo(repo: RepoInfo): Promise<void> {
   await rm(repo.root, { recursive: true, force: true });
 }
 
+export async function makeCommit(repo: RepoInfo, message = "commit"): Promise<string> {
+  await git(["commit", "--allow-empty", "-q", "-m", message], { cwd: repo.root });
+  return (await git(["rev-parse", "HEAD"], { cwd: repo.root })).trim();
+}
+
 export interface TurnSpec {
   role: "user" | "assistant";
   text: string;
