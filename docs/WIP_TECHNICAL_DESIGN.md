@@ -36,11 +36,21 @@ version-pinned and must be revalidated per CLI release.
 ## Division of labor with Conversation Ledger
 
 The ledger owns capture (adapters, cursors, idempotent event ids, git-notes
-storage, explicit sync). Turnbridge never parses source transcripts itself and
+storage, transport). Turnbridge never parses source transcripts itself and
 is a reader plus a writer of *target-native* session files. It writes exactly
 one kind of ledger event — `continuation` lineage edges (below) — and no
 conversation content. Ledger changes made for turnbridge: a library entry
 point (`package.json` exports) and human-turn identity stamping.
+
+Turnbridge's reads inherit cledger 0.8.0's read-time behavior: `readEvents()`
+lazily absorbs whatever transport already fetched into the local ref, then
+auto-runs squash/rebase re-anchor detection, which can append a `re_anchor`
+mapping event and print a notice to stderr. Reachability filtering resolves
+through `re_anchor` mappings, so a bridged conversation and its `continuation`
+lineage survive a squash merge instead of falling out of the picker. Turnbridge
+issues two such reads per invocation (conversation listing, then lineage
+lookup) and buffers the ledger's stderr notices across both so they render as
+one block above the picker rather than interleaving with it.
 
 ## Conversation lineage (branch-on-bridge)
 
@@ -85,15 +95,43 @@ to replay (foreign tool calls fold into labeled text). Claude accepts foreign
 
 `actor.id`/`actor.display` come from `git config user.email/name` at capture
 time. Default listings: own + unattributed conversations; `--all` shows every
-author with labels. Transport is Conversation Ledger's explicit `cledger sync`
-(git notes push/fetch); turnbridge adds no network behavior. Events captured
-before identity stamping existed are unattributed; a forced transcript rescan
-after the upgrade can duplicate those turns under new event ids.
+author with labels. Transport is optional-but-default-on: Conversation
+Ledger's auto-installed pre-push hook and fetch refspec ride normal
+`git push`/`git fetch`, gated by the ledger's secret scan and disableable per
+user (`{"transport": {"hook": false, "fetchRefspec": false}}`); `cledger sync`
+remains available for an explicit push/fetch/merge. Turnbridge adds no
+network behavior of its own — it only reads whatever the ledger has already
+absorbed locally. Events captured before identity stamping existed are
+unattributed; a forced transcript rescan after the upgrade can duplicate
+those turns under new event ids.
 
 ## Risks
 
 Native formats change without notice (fabrication is version-pinned, bootstrap
-is the recovery path); transcript content can include secrets (ledger-side
-redaction is still an open roadmap item — review before `cledger sync`); full
+is the recovery path); transcript content can include secrets (the ledger
+redacts at capture and sync time, but matching is pattern/entropy-based and
+cannot catch every secret — review before sharing still matters); full
 histories can exceed the target's context (size is reported before launch);
 crashes mid-turn leave partial capture, which the ledger tolerates by design.
+
+## Roadmap
+
+Toward an npm release (decided 2026-07-21; deepen the two existing targets
+before broadening):
+
+- Publish `conversation-ledger` to npm (name is unclaimed), then swap the
+  `file:` dependency for a semver range — `prepublishOnly` refuses to publish
+  until this happens. Deliberately deferred while both packages are iterated
+  on and dogfooded for a few days.
+- Adapter-drift automation stage 2: the daily check
+  (`.github/workflows/adapter-drift.yml`) currently opens a tracking issue on
+  drift; the commented-out follow-on job hands the issue to a Claude Code
+  action that revalidates the spec against the new CLI release and drafts the
+  PR. Needs an `ANTHROPIC_API_KEY` repo secret and comfort with CI pushing
+  branches.
+- Revalidation tooling exists and is the bar for widening version pins:
+  `npm run smoke:interactive` (real-TUI render check, both targets) plus
+  `scripts/probe-codex-content.mjs` (headless model-recall probe).
+- Still-open verification gaps from the spec docs: large/long histories
+  (size cliffs, Codex auto-compaction), timestamp-format tolerance,
+  sessionId/filename mismatch, duplicate or dangling uuid handling.

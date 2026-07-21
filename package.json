@@ -24,14 +24,26 @@
       "default": "./dist/index.js"
     }
   },
+  "keywords": [
+    "coding-agent",
+    "claude-code",
+    "codex",
+    "resume",
+    "session",
+    "cross-cli"
+  ],
   "files": [
     "dist",
+    "!dist/test",
     "README.md",
     "LICENSE"
   ],
   "scripts": {
     "build": "tsc -p tsconfig.json && node -e \"require('fs').chmodSync('dist/cli.js', 0o755)\"",
     "test": "npm run build && node --test \"dist/test/**/*.test.js\"",
+    "smoke:interactive": "npm run build && node scripts/smoke-interactive.mjs",
+    "check:adapter-drift": "node scripts/check-adapter-drift.mjs",
+    "prepublishOnly": "node -e \"const d=require('./package.json').dependencies['conversation-ledger']; if(d.startsWith('file:')) { console.error('refusing to publish: conversation-ledger is still a file: dependency — publish it to npm and pin a semver range first'); process.exit(1); }\" && npm test",
     "prepare": "npm run build"
   },
   "dependencies": {
