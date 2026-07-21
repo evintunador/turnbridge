@@ -79,7 +79,12 @@ evidence, so turnbridge does not need to alter capture to avoid double-count.
   modify existing native sessions.
 - Represent foreign tool calls faithfully (or as clearly-labeled text when the
   target rejects unknown tool schemas — see per-adapter spec notes).
-- Label the session as imported in its first visible message.
+- Propagate the source model id into fabricated assistant envelopes verbatim
+  (decided 2026-07-21). If the target harness recognizes it — e.g. the user
+  registered matching external models in Claude Code — the session restores
+  seamlessly; otherwise the target warns once and falls back to its default,
+  which is accurate ("this bridge changed models"). Never substitute a
+  recognized-but-false id.
 
 Reverse-engineered, empirically verified format specs (pinned versions,
 minimal working schemas, unknowns): [docs/specs/claude-session-format.md](specs/claude-session-format.md)
