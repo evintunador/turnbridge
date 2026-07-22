@@ -160,5 +160,8 @@ before broadening):
   text for the Claude leg, replayed blobs for the Codex legs that match. Empirically verified via
   scripts/probe-encrypted-reasoning.mjs: same-account replay of a real blob
   in a fabricated session is accepted across sessions and CLI versions.
-  Open: cross-account validity (teammate sharing) — untestable without a
-  second OpenAI account.
+  Open: cross-account validity (teammate sharing) — attempted 2026-07-21
+  against a free-tier ChatGPT account and inconclusive: the free tier has no
+  Codex model entitlement at all (every request 400s before the reasoning
+  item is evaluated). Needs a second account that can actually run Codex —
+  a paid ChatGPT plan, or API-key auth on a different platform org.
