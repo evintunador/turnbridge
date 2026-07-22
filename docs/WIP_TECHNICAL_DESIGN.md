@@ -150,7 +150,14 @@ before broadening):
   or a codex→claude→codex round trip) — same-CLI resume is native and keeps
   them. If the ledger starts preserving them, the fabricator should replay
   them only when source provider/CLI matches the target (never feed Codex
-  blobs to Claude Code). Empirically verified via
+  blobs to Claude Code). Note the restore-policy space collapses to one
+  switch: foreign/unreadable reasoning is already "coerced" in-band today by
+  folding visible thinking into labeled text (safe, at the cost of possibly
+  out-of-distribution context), and fabricating foreign reasoning as native
+  reasoning *items* is impossible (ciphertext can't be forged) — so the only
+  real option is whether provider-matched encrypted replay is on or off.
+  Mixed-lineage sessions (codex→claude→codex) would then carry both: folded
+  text for the Claude leg, replayed blobs for the Codex legs that match. Empirically verified via
   scripts/probe-encrypted-reasoning.mjs: same-account replay of a real blob
   in a fabricated session is accepted across sessions and CLI versions.
   Open: cross-account validity (teammate sharing) — untestable without a
