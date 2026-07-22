@@ -140,3 +140,18 @@ before broadening):
 - Still-open verification gaps from the spec docs: large/long histories
   (size cliffs, Codex auto-compaction), timestamp-format tolerance,
   sessionId/filename mismatch, duplicate or dangling uuid handling.
+- Encrypted-reasoning replay (2026-07-21 realization): Codex's `reasoning`
+  items are ciphertext only OpenAI's servers can decrypt — the client just
+  round-trips them, so recording them would let a fabricated Codex session
+  restore hidden reasoning to the provider. Today they are lost twice over:
+  the ledger drops them at capture (see Conversation Ledger's roadmap) and
+  the fabricator omits them. This only bites fabricated codex-target
+  sessions whose lineage began in Codex (different machine, deleted rollout,
+  or a codex→claude→codex round trip) — same-CLI resume is native and keeps
+  them. If the ledger starts preserving them, the fabricator should replay
+  them only when source provider/CLI matches the target (never feed Codex
+  blobs to Claude Code). Empirically verified via
+  scripts/probe-encrypted-reasoning.mjs: same-account replay of a real blob
+  in a fabricated session is accepted across sessions and CLI versions.
+  Open: cross-account validity (teammate sharing) — untestable without a
+  second OpenAI account.
