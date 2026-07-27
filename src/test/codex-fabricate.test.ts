@@ -130,7 +130,7 @@ test("does not replay reasoning when replayReasoning is false", async () => {
       (lines.find((l) => l.type === "response_item")!.payload as { content: { text: string }[] })
         .content[0]!.text
     );
-    assert.match(notice, /hidden reasoning and provider-private state were not transferred/);
+    assert.match(notice, /hidden reasoning and provider-private state were not transferred/i);
   } finally {
     await cleanupRepo(repo);
   }
@@ -154,6 +154,124 @@ test("never replays a reasoning event whose own producer.source isn't codex", as
     assert.equal(
       lines.filter((l) => (l.payload as Record<string, unknown>)["type"] === "reasoning").length,
       0,
+    );
+  } finally {
+    await cleanupRepo(repo);
+  }
+});
+
+/**
+ * Structured foreign tool replay (docs/specs/codex-rollout-format.md §8.2,
+ * resolved by scripts/probe-codex-function-call.mjs). Before this, every tool
+ * call was flattened to prose for the Codex target even though cledger had the
+ * structured data and the Claude target kept it.
+ */
+
+const TOOL_SID = "55555555-5555-4555-8555-555555555555";
+
+function toolDraft(conversationId: string, seq: number, role: string, blocks: unknown[]) {
+  return {
+    kind: "conversation_turn" as const,
+    occurred_at: `2026-01-01T00:00:0${seq}.000Z`,
+    actor:
+      role === "user"
+        ? { type: "human" as const, id: "me@x.com" }
+        : { type: "agent" as const, id: "claude-test" },
+    producer: { tool: "turnbridge-test", source: "claude-code", session_id: TOOL_SID },
+    conversation: { id: conversationId, seq },
+    content: { role, blocks },
+  };
+}
+
+test("paired foreign tool calls replay as function_call/function_call_output", async () => {
+  const repo = await makeTempRepo();
+  try {
+    const id = `claude-code:${TOOL_SID}`;
+    await appendEvents(repo, [
+      toolDraft(id, 0, "user", [{ type: "text", text: "fix the typo" }]),
+      toolDraft(id, 1, "assistant", [
+        { type: "text", text: "Editing now." },
+        {
+          type: "tool_use",
+          id: "toolu_abc123",
+          name: "Edit",
+          input: { file_path: "/a.txt", old_string: "teh", new_string: "the" },
+        },
+      ]),
+      toolDraft(id, 2, "user", [
+        { type: "tool_result", tool_use_id: "toolu_abc123", content: "Applied 1 edit" },
+      ]),
+    ] as never);
+    const [summary] = await listConversations(repo, { all: true });
+    const lines = buildRolloutLines(summary!, NEW_ID, "/work/dir", "0.145.0", new Date());
+    const items = lines
+      .filter((l) => l.type === "response_item")
+      .map((l) => l.payload as Record<string, unknown>);
+
+    const call = items.find((p) => p["type"] === "function_call");
+    assert.ok(call, "expected a function_call response_item");
+    assert.equal(call!["name"], "Edit", "foreign tool name is preserved verbatim");
+    assert.equal(call!["call_id"], "toolu_abc123");
+    // the Responses API carries arguments as a JSON string, not an object
+    assert.equal(typeof call!["arguments"], "string");
+    assert.deepEqual(JSON.parse(call!["arguments"] as string), {
+      file_path: "/a.txt",
+      old_string: "teh",
+      new_string: "the",
+    });
+
+    const output = items.find((p) => p["type"] === "function_call_output");
+    assert.ok(output, "expected a function_call_output response_item");
+    assert.equal(output!["call_id"], "toolu_abc123", "output must pair with its call");
+    assert.deepEqual(output!["output"], [{ type: "input_text", text: "Applied 1 edit" }]);
+
+    // prose that preceded the tool call keeps its position ahead of it
+    const callIdx = items.indexOf(call!);
+    const proseIdx = items.findIndex(
+      (p) =>
+        p["type"] === "message" &&
+        JSON.stringify(p["content"]).includes("Editing now."),
+    );
+    assert.ok(proseIdx > -1 && proseIdx < callIdx, "text must stay ahead of the tool call");
+
+    // scrollback still shows something: Codex has no generic tool-call event_msg
+    const display = lines.filter((l) => l.type === "event_msg");
+    assert.ok(
+      display.some((l) => String((l.payload as { message?: string }).message ?? "").includes("[used tool: Edit]")),
+      "tool call must remain visible in TUI scrollback",
+    );
+  } finally {
+    await cleanupRepo(repo);
+  }
+});
+
+test("orphaned tool results stay prose rather than becoming nameless outputs", async () => {
+  const repo = await makeTempRepo();
+  try {
+    const id = `claude-code:${TOOL_SID}`;
+    await appendEvents(repo, [
+      toolDraft(id, 0, "user", [{ type: "text", text: "what happened?" }]),
+      // no matching tool_use anywhere in this conversation
+      toolDraft(id, 1, "user", [
+        { type: "tool_result", tool_use_id: "toolu_missing", content: "exit 0" },
+      ]),
+    ] as never);
+    const [summary] = await listConversations(repo, { all: true });
+    const lines = buildRolloutLines(summary!, NEW_ID, "/work/dir", "0.145.0", new Date());
+    const items = lines
+      .filter((l) => l.type === "response_item")
+      .map((l) => l.payload as Record<string, unknown>);
+
+    assert.equal(
+      items.some((p) => p["type"] === "function_call_output"),
+      false,
+      "an orphaned output carries no tool name at all — keep it as prose",
+    );
+    assert.ok(
+      items.some(
+        (p) => p["type"] === "message" && JSON.stringify(p["content"]).includes("[tool result]"),
+      ),
+      "the result text must survive somewhere",
     );
   } finally {
     await cleanupRepo(repo);
