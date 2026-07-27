@@ -75,3 +75,48 @@ export async function seedConversation(
     turns.map((t) => turnDraft(conversationId, source, t)),
   );
 }
+
+export interface ReasoningSpec {
+  seq: number;
+  occurredAt?: string;
+  /** Defaults to a Codex `reasoning` response_item shaped as real captures are. */
+  encryptedContent?: string;
+  /** Override the event's own producer.source, e.g. to exercise the replay gate. */
+  source?: string;
+}
+
+/** A `reasoning`-kind event as conversation-ledger's Codex adapter emits it:
+ * opaque `content`, the verbatim response_item line under `raw.data`. */
+export function reasoningEventDraft(
+  conversationId: string,
+  source: string,
+  spec: ReasoningSpec,
+): EventDraft {
+  const sessionId = conversationId.split(":").slice(1).join(":");
+  const occurredAt = spec.occurredAt ?? `2026-01-01T00:00:${String(spec.seq).padStart(2, "0")}.500Z`;
+  return {
+    kind: "reasoning",
+    occurred_at: occurredAt,
+    actor: { type: "agent" },
+    producer: {
+      tool: "turnbridge-test",
+      source: spec.source ?? source,
+      session_id: sessionId,
+    },
+    conversation: { id: conversationId, seq: spec.seq },
+    content: { opaque: true },
+    raw: {
+      format: "codex-rollout-jsonl/2",
+      data: {
+        timestamp: occurredAt,
+        type: "response_item",
+        payload: {
+          type: "reasoning",
+          id: `rs_${spec.seq}`,
+          summary: [],
+          encrypted_content: spec.encryptedContent ?? `ENC[${spec.seq}]`,
+        },
+      },
+    },
+  };
+}

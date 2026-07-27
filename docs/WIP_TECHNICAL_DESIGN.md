@@ -140,30 +140,42 @@ before broadening):
 - Still-open verification gaps from the spec docs: large/long histories
   (size cliffs, Codex auto-compaction), timestamp-format tolerance,
   sessionId/filename mismatch, duplicate or dangling uuid handling.
-- Encrypted-reasoning replay (2026-07-21 realization): Codex's `reasoning`
-  items are ciphertext only OpenAI's servers can decrypt — the client just
-  round-trips them, so recording them would let a fabricated Codex session
-  restore hidden reasoning to the provider. Today they are lost twice over:
-  the ledger drops them at capture (see Conversation Ledger's roadmap) and
-  the fabricator omits them. This only bites fabricated codex-target
-  sessions whose lineage began in Codex (different machine, deleted rollout,
-  or a codex→claude→codex round trip) — same-CLI resume is native and keeps
-  them. If the ledger starts preserving them, the fabricator should replay
-  them only when source provider/CLI matches the target (never feed Codex
-  blobs to Claude Code). Note the restore-policy space collapses to one
-  switch: foreign/unreadable reasoning is already "coerced" in-band today by
-  folding visible thinking into labeled text (safe, at the cost of possibly
-  out-of-distribution context), and fabricating foreign reasoning as native
-  reasoning *items* is impossible (ciphertext can't be forged) — so the only
-  real option is whether provider-matched encrypted replay is on or off.
-  Mixed-lineage sessions (codex→claude→codex) would then carry both: folded
-  text for the Claude leg, replayed blobs for the Codex legs that match. Empirically verified via
-  scripts/probe-encrypted-reasoning.mjs: same-account replay of a real blob
-  in a fabricated session is accepted across sessions and CLI versions.
-  Cross-account validity (teammate sharing): VERIFIED 2026-07-21 — a blob
-  generated under one ChatGPT account replayed cleanly under a different
-  paid ChatGPT account (identical token accounting to the owning-account
-  run), so the ciphertext is not keyed per-account. Note the free tier
-  cannot run Codex at all (entitlement 400s mask everything). Still open:
-  blob TTL, and whether API-platform-org auth behaves the same as ChatGPT
-  auth.
+- **Encrypted-reasoning replay** *(shipped, needs a turnbridge version bump)*
+  — Codex's `reasoning` items are ciphertext only OpenAI's servers can
+  decrypt; conversation-ledger 0.10.0 preserves them losslessly and opaquely
+  (`kind: "reasoning"`, ciphertext in `raw.data`, `content` a bare opacity
+  marker). `listConversations` (`src/conversations.ts`) now fetches
+  `reasoning` events alongside `conversation_turn`s — `readEvents`'s `kind`
+  filter is exact-match only, so it fetches unfiltered and narrows
+  client-side — and carries them through `ConversationSummary.events` in
+  seq order; `turnCount` still counts only visible turns.
+  `src/targets/codex.ts`'s `buildRolloutLines` replays each reasoning
+  event's verbatim `raw.data` response_item line at its correct seq position
+  when `event.producer.source === "codex"` — gated per-event, not
+  per-conversation, even though today's data model (a `ConversationSummary`
+  groups by one native session id, hence one source) makes that equivalent
+  to a per-conversation check in practice; genuine multi-hop carry-over
+  (reconstructing an ancestor hop's reasoning via the lineage chain when
+  re-bridging) is deliberately not built and stays a follow-up. Never
+  applies to a Claude Code target: foreign reasoning can't be forged as a
+  native reasoning item, so the only real switch is whether provider-matched
+  replay happens, not what it's coerced into — unreadable/foreign reasoning
+  is still folded into labeled text as before. On by default (decided
+  2026-07-23); opt out with `--no-reasoning-replay` or
+  `{"reasoningReplay": false}` in `~/.turnbridge/config.json` (`src/config.ts`).
+  No ownership gate — replay applies to any synced conversation, not just
+  the current user's own, per 2026-07-23 decision. The fabricated session's
+  import notice (`buildRolloutLines`) is conditional: it discloses the
+  replayed-block count when replay happened instead of the blanket "hidden
+  reasoning ... not transferred" claim, and still states that claim for
+  everything else in the same session. Empirically verified via
+  scripts/probe-encrypted-reasoning.mjs (manual injection, independent of
+  this integration): same-account and cross-account replay of a real blob in
+  a fabricated session is accepted across sessions, CLI versions, and a
+  different paid ChatGPT account (identical token accounting), so the
+  ciphertext is not keyed per-account; the free tier cannot run Codex at all.
+  Still open: blob TTL, and whether API-platform-org auth behaves the same
+  as ChatGPT auth — turnbridge attempts replay unconditionally either way
+  since auth mode isn't observable from here; a rejected blob at actual
+  `codex resume` time has no proactive detection and falls under the same
+  `--bootstrap` escape hatch as any other fabrication-drift failure.

@@ -17,6 +17,7 @@ export interface ResumeFlags {
   anyCommit?: boolean;
   bootstrap?: boolean;
   listOnly?: boolean;
+  noReasoningReplay?: boolean;
 }
 
 function relativeTime(iso: string): string {
@@ -102,13 +103,14 @@ async function buildPlan(
   cwd: string,
   useBootstrap: boolean,
   lineage: Lineage,
+  replayReasoning: boolean,
 ): Promise<LaunchPlan> {
   if (target.name === summary.source && !useBootstrap) {
     return target.nativeResume(summary.sessionId, cwd);
   }
   if (!useBootstrap) {
     try {
-      const plan = await target.fabricate(summary, cwd);
+      const plan = await target.fabricate(summary, cwd, { replayReasoning });
       // re-bridging a conversation that already embeds imported history
       // re-copies that history into the new session — functional, just larger
       if (lineage.parentOf.has(summary.id)) {
@@ -194,6 +196,17 @@ export async function resumeCommand(flags: ResumeFlags): Promise<number> {
     return 1;
   }
 
-  const plan = await buildPlan(repo, target, summary, cwd, flags.bootstrap ?? false, lineage);
+  const config = await loadConfig();
+  const replayReasoning = !flags.noReasoningReplay && config.reasoningReplay !== false;
+
+  const plan = await buildPlan(
+    repo,
+    target,
+    summary,
+    cwd,
+    flags.bootstrap ?? false,
+    lineage,
+    replayReasoning,
+  );
   return runLaunchPlan(plan);
 }

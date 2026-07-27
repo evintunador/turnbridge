@@ -6,6 +6,12 @@ import type { CliName } from "./types.js";
 export interface TurnbridgeConfig {
   /** Target CLI used when `turnbridge resume` is called without one. */
   defaultTarget?: CliName;
+  /**
+   * Replay a Codex-origin conversation's opaque `reasoning` blobs when
+   * fabricating it back into Codex, restoring hidden reasoning provider-side
+   * (see docs/WIP_TECHNICAL_DESIGN.md). Default on; set false to opt out.
+   */
+  reasoningReplay?: boolean;
 }
 
 export function configDir(): string {

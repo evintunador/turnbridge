@@ -27,8 +27,15 @@ export interface TargetAdapter {
    * Fabricate a native session file from canonical events so this CLI's own
    * resume loads it, then return the resume plan. Version-pinned; throws
    * FabricationUnsupportedError when the installed CLI version is unverified.
+   * `replayReasoning` governs whether opaque `reasoning` events are replayed
+   * verbatim where the target supports it (Codex only, gated per-event on
+   * `producer.source === "codex"` — most targets ignore the flag entirely).
    */
-  fabricate(summary: ConversationSummary, cwd: string): Promise<LaunchPlan>;
+  fabricate(
+    summary: ConversationSummary,
+    cwd: string,
+    opts: { replayReasoning: boolean },
+  ): Promise<LaunchPlan>;
   /** Honest fallback: fresh session instructed to read the transcript file. */
   bootstrap(summary: ConversationSummary, cwd: string, transcriptPath: string): LaunchPlan;
 }

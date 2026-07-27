@@ -26,7 +26,13 @@ unless you ask for everyone's.
 - Prefer conversations whose repository and code state match the current work;
   warn rather than silently treating mismatched history as current.
 - Never claim to transfer hidden reasoning, private provider state, or an
-  exact native session; a fabricated session is labeled as imported.
+  exact native session; a fabricated session is labeled as imported. The one
+  exception is verifiably real, not claimed: a Codex-origin conversation
+  fabricated back into Codex replays its provider-encrypted `reasoning`
+  blobs verbatim by default (never across CLIs — ciphertext can't be forged
+  as a foreign CLI's native reasoning), and the import notice discloses
+  exactly how many blocks were replayed so the label stays honest either way.
+  `--no-reasoning-replay` / `{"reasoningReplay": false}` opts out.
 - Put the developer in control of capture, sharing, and deletion. Sharing is
   a deliberate choice, not a side effect: today it is an explicit
   `cledger sync`; the decided direction (see Conversation Ledger's design

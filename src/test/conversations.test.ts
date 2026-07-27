@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { appendEvents } from "conversation-ledger";
 import { listConversations } from "../conversations.js";
-import { cleanupRepo, makeTempRepo, seedConversation } from "./helpers.js";
+import { cleanupRepo, makeTempRepo, reasoningEventDraft, seedConversation } from "./helpers.js";
 
 const SID_A = "11111111-1111-4111-8111-111111111111";
 const SID_B = "22222222-2222-4222-8222-222222222222";
@@ -36,6 +37,26 @@ test("groups events into conversations with titles, owners, ordering", async () 
     assert.deepEqual(claude.owners, ["me@x.com"]);
     assert.deepEqual(claude.ownerDisplays, ["Me"]);
     assert.equal(claude.events[0]!.conversation!.seq, 0);
+  } finally {
+    await cleanupRepo(repo);
+  }
+});
+
+test("reasoning events ride along in seq order but never count as turns", async () => {
+  const repo = await makeTempRepo();
+  try {
+    await seedConversation(repo, `codex:${SID_A}`, "codex", [
+      { role: "user", text: "explain the retry logic", seq: 0, email: "me@x.com" },
+      { role: "assistant", text: "It backs off exponentially.", seq: 2 },
+    ]);
+    await appendEvents(repo, [reasoningEventDraft(`codex:${SID_A}`, "codex", { seq: 1 })]);
+
+    const [summary] = await listConversations(repo, { all: true });
+    assert.equal(summary!.turnCount, 2); // reasoning event excluded from the count
+    assert.deepEqual(
+      summary!.events.map((e) => `${e.kind}:${e.conversation!.seq}`),
+      ["conversation_turn:0", "reasoning:1", "conversation_turn:2"],
+    );
   } finally {
     await cleanupRepo(repo);
   }

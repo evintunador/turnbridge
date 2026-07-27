@@ -15,6 +15,9 @@ Options for resume/list:
   --any-commit  include conversations anchored to commits not reachable from HEAD
   --bootstrap   force honest rehydration (fresh session reads the transcript)
                 instead of fabricating a native session file
+  --no-reasoning-replay
+                don't replay Codex-origin encrypted reasoning blobs when
+                fabricating back into Codex (default: replay them)
 `;
 
 async function main(argv: string[]): Promise<number> {
@@ -32,6 +35,7 @@ async function main(argv: string[]): Promise<number> {
       if (arg === "--all" || arg === "-a") flags.all = true;
       else if (arg === "--any-commit") flags.anyCommit = true;
       else if (arg === "--bootstrap") flags.bootstrap = true;
+      else if (arg === "--no-reasoning-replay") flags.noReasoningReplay = true;
       else if (!arg.startsWith("-")) {
         const target = parseCliName(arg);
         if (!target) {

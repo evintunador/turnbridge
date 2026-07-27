@@ -151,7 +151,7 @@ async function smokeTarget(name, repo, conversationId, artifactsDir) {
   );
   if (!summary) throw new Error("seeded conversation not visible to listConversations");
 
-  const plan = await target.fabricate(summary, repo.root);
+  const plan = await target.fabricate(summary, repo.root, { replayReasoning: true });
   const logPath = join(artifactsDir, `${name}.pty.log`);
 
   const { stripped, earlyExit } = await runInPty({
@@ -203,7 +203,7 @@ if (manual) {
     const summary = (await listConversations(repo, { all: true })).find(
       (c) => c.id === conversationId,
     );
-    const plan = await target.fabricate(summary, repo.root);
+    const plan = await target.fabricate(summary, repo.root, { replayReasoning: true });
     out.push(
       `[${name}] run this in a normal terminal (not inside another agent session):`,
       "",

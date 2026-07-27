@@ -36,7 +36,7 @@ await appendEvents(repo, [
 ]);
 
 const summary = (await listConversations(repo, { all: true })).find((c) => c.id === conversationId);
-const plan = await targetFor("codex").fabricate(summary, dir);
+const plan = await targetFor("codex").fabricate(summary, dir, { replayReasoning: true });
 const sessionId = plan.fabricatedConversationId.split(":")[1];
 console.log(`fabricated codex session ${sessionId}`);
 

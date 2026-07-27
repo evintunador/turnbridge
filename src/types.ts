@@ -35,7 +35,13 @@ export interface ConversationSummary {
   /** Distinct human actor ids (git emails); empty when captured pre-identity. */
   owners: string[];
   ownerDisplays: string[];
-  /** All turn events, in canonical order. */
+  /**
+   * All turn events plus opaque `reasoning` events, in canonical order.
+   * `turnContent` returns null for `reasoning` events, so consumers that
+   * only render visible content already skip them without change; targets
+   * that replay them (currently only Codex-origin -> Codex) check
+   * `event.kind === "reasoning"` explicitly.
+   */
   events: EvidenceEvent[];
 }
 

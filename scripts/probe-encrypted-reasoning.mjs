@@ -54,7 +54,10 @@ await appendEvents(repo, [
   turn("assistant", `Noted. I will recall the marker phrase when asked.`, 1),
 ]);
 const summary = (await listConversations(repo, { all: true })).find((c) => c.id === conversationId);
-const plan = await targetFor("codex").fabricate(summary, dir);
+// replayReasoning: false — this probe injects the donor line by hand below to
+// isolate "does the API accept a replayed blob" from turnbridge's own
+// ledger-driven replay path (see src/targets/codex.ts).
+const plan = await targetFor("codex").fabricate(summary, dir, { replayReasoning: false });
 const sessionId = plan.fabricatedConversationId.split(":")[1];
 const rolloutPath = plan.notes.find((n) => n.includes("rollout file:")).split("rollout file: ")[1];
 console.log(`fabricated session ${sessionId}`);

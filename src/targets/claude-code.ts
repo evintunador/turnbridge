@@ -195,6 +195,9 @@ export const claudeCodeTarget: TargetAdapter = {
     };
   },
 
+  // `opts.replayReasoning` doesn't apply here: only Codex issues opaque
+  // reasoning ciphertext, and it can't be forged as a native Claude Code
+  // reasoning item, so there is nothing for this target to replay.
   async fabricate(summary: ConversationSummary, cwd: string): Promise<LaunchPlan> {
     const version = claudeVersion();
     if (!version) {

@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import { mkdir, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
+import type { EvidenceEvent } from "conversation-ledger";
 import { bootstrapPrompt } from "../bootstrap.js";
 import { binaryOnPath } from "../launch.js";
 import { cliLabel, turnContent, type ConversationSummary, type TurnBlock } from "../types.js";
@@ -95,14 +96,52 @@ function turnLines(timestamp: string, role: "user" | "assistant", text: string):
     : [messageLine(timestamp, role, text), displayLine(timestamp, role, text)];
 }
 
+/**
+ * `reasoning` events this fabrication should replay verbatim: opaque
+ * `encrypted_content` only the originating provider can decrypt, which the
+ * ledger preserves losslessly (raw.data holds the exact original
+ * response_item line) but never interprets. Foreign reasoning cannot be
+ * forged as a native reasoning item, so replay is gated per-event on
+ * `producer.source === "codex"` — the only direction this can ever be
+ * valid, regardless of how the rest of the conversation's lineage looks.
+ */
+function eligibleReasoning(summary: ConversationSummary, replayReasoning: boolean): EvidenceEvent[] {
+  if (!replayReasoning) return [];
+  return summary.events.filter((e) => e.kind === "reasoning" && e.producer.source === "codex");
+}
+
+/** The verbatim `{type: "response_item", payload: {type: "reasoning", ...}}` line, if shaped as expected. */
+function reasoningRolloutLine(event: EvidenceEvent): RolloutLine | null {
+  const line = event.raw?.data as { type?: unknown; payload?: unknown } | undefined;
+  if (line?.type !== "response_item" || !line.payload || typeof line.payload !== "object") return null;
+  return {
+    timestamp: event.occurred_at,
+    type: "response_item",
+    payload: line.payload as Record<string, unknown>,
+  };
+}
+
 export function buildRolloutLines(
   summary: ConversationSummary,
   sessionId: string,
   cwd: string,
   cliVersion: string,
   now: Date,
+  replayReasoning = true,
 ): RolloutLine[] {
   const nowIso = now.toISOString();
+  const replayCount = eligibleReasoning(summary, replayReasoning).length;
+  const noticeText =
+    replayCount > 0
+      ? `[turnbridge import notice] This conversation was imported from ${cliLabel(summary.source)}. ` +
+        `The history below is the literal visible transcript. ${replayCount} encrypted reasoning ` +
+        "block(s) from the original Codex session were also replayed verbatim below, which may restore " +
+        "hidden reasoning provider-side; all other hidden reasoning and provider-private state, and past " +
+        "tool calls, were not transferred and are shown as labeled text, not replayable calls."
+      : `[turnbridge import notice] This conversation was imported from ${cliLabel(summary.source)}. ` +
+        "The history below is the literal visible transcript; hidden reasoning and provider-private " +
+        "state were not transferred, and past tool calls are shown as labeled text, not replayable calls.";
+
   const lines: RolloutLine[] = [
     {
       timestamp: nowIso,
@@ -120,16 +159,16 @@ export function buildRolloutLines(
         history_mode: "legacy",
       },
     },
-    ...turnLines(
-      nowIso,
-      "user",
-      `[turnbridge import notice] This conversation was imported from ${cliLabel(summary.source)}. ` +
-        "The history below is the literal visible transcript; hidden reasoning and provider-private " +
-        "state were not transferred, and past tool calls are shown as labeled text, not replayable calls.",
-    ),
+    ...turnLines(nowIso, "user", noticeText),
   ];
 
   for (const event of summary.events) {
+    if (event.kind === "reasoning") {
+      if (!replayReasoning || event.producer.source !== "codex") continue;
+      const line = reasoningRolloutLine(event);
+      if (line) lines.push(line);
+      continue;
+    }
     const content = turnContent(event);
     if (!content) continue;
     const text = content.blocks.map(foldBlock).filter((t) => t.trim()).join("\n\n");
@@ -157,7 +196,11 @@ export const codexTarget: TargetAdapter = {
     };
   },
 
-  async fabricate(summary: ConversationSummary, cwd: string): Promise<LaunchPlan> {
+  async fabricate(
+    summary: ConversationSummary,
+    cwd: string,
+    opts: { replayReasoning: boolean },
+  ): Promise<LaunchPlan> {
     const version = codexVersion();
     if (!version) {
       throw new FabricationUnsupportedError("could not determine codex version", "codex");
@@ -176,13 +219,21 @@ export const codexTarget: TargetAdapter = {
     const dir = join(sessionsDir(), datePath);
     await mkdir(dir, { recursive: true });
     const path = join(dir, `rollout-${stamp}-${sessionId}.jsonl`);
-    const lines = buildRolloutLines(summary, sessionId, cwd, version, now);
+    const lines = buildRolloutLines(summary, sessionId, cwd, version, now, opts.replayReasoning);
     await writeFile(path, lines.map((l) => JSON.stringify(l)).join("\n") + "\n");
 
     notes.push(
       `fabricated Codex session ${sessionId} from ${cliLabel(summary.source)} history (${summary.turnCount} turns)`,
       `rollout file: ${path}`,
     );
+    const replayCount = eligibleReasoning(summary, opts.replayReasoning).length;
+    if (replayCount > 0) {
+      notes.push(
+        `replayed ${replayCount} encrypted reasoning block(s) from the original Codex session verbatim ` +
+          "(may restore hidden reasoning provider-side; disable with reasoningReplay: false in " +
+          "~/.turnbridge/config.json or --no-reasoning-replay)",
+      );
+    }
     return {
       command: "codex",
       args: ["resume", sessionId],
