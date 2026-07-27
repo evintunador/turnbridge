@@ -361,10 +361,21 @@ verified empirical result exactly — no divergence there.
   "hangs on load" behavior) that print mode skips. Recommend a manual
   interactive smoke test (`claude --resume <id>` with no `-p`) before
   shipping turnbridge broadly.
-- **Resume picker (`claude` / `/resume` with no ID) title source is
-  inferred, not confirmed** — likely `ai-title` line content, falling back to
-  first user message, but this is not independently verified against the
-  actual interactive picker UI.
+- **Resume picker title source — RESOLVED, inference was correct** (probe,
+  2026-07-27, claude 2.1.220, `scripts/probe-picker.mjs`, driven through a
+  pty). Two sessions were planted in one project dir: one with an `ai-title`
+  line and a distinctive first user message, one with only the message. The
+  picker rendered the `ai-title` for the first (and *not* its first user
+  message) and the first user message for the second. So `ai-title` wins, with
+  fallback to the first user message exactly as §3 guessed.
+  **Consequence for turnbridge:** fabricated sessions carried no `ai-title`,
+  so every bridged conversation appeared in the picker titled by turnbridge's
+  own import notice — the same string for every bridge, describing the
+  machinery instead of the conversation. `buildSessionLines` now emits an
+  `ai-title` derived from the first human turn. Trailing placement was
+  separately verified safe (`probe-session-invariants.mjs`): the `parentUuid`
+  walk starts at the last line but skips non-conversation line types, so a
+  trailing `ai-title` does not truncate history.
 - **Timestamp *ordering* tolerance — RESOLVED** (probe, 2026-07-27,
   claude 2.1.220, `scripts/probe-session-invariants.mjs`). Out-of-order lines
   are tolerated: a file whose first line is stamped *newer* than every line

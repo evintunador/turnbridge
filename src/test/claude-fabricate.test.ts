@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { buildSessionLines, encodeProjectDir } from "../targets/claude-code.js";
+import { buildSessionLines, conversationLines, encodeProjectDir } from "../targets/claude-code.js";
 import { listConversations } from "../conversations.js";
 import { cleanupRepo, makeTempRepo, seedConversation } from "./helpers.js";
 
@@ -21,26 +21,27 @@ test("builds a parentUuid-chained session with timestamps and full envelopes", a
     ]);
     const [summary] = await listConversations(repo, { all: true });
     const lines = buildSessionLines(summary!, NEW_ID, "/work/dir", "2.1.215", new Date());
+    const convo = conversationLines(lines);
 
     // import notice + two turns
-    assert.equal(lines.length, 3);
+    assert.equal(convo.length, 3);
 
     // load-bearing parentUuid chain: null first, then previous line's uuid
-    assert.equal(lines[0]!.parentUuid, null);
-    assert.equal(lines[1]!.parentUuid, lines[0]!.uuid);
-    assert.equal(lines[2]!.parentUuid, lines[1]!.uuid);
+    assert.equal(convo[0]!.parentUuid, null);
+    assert.equal(convo[1]!.parentUuid, convo[0]!.uuid);
+    assert.equal(convo[2]!.parentUuid, convo[1]!.uuid);
 
-    for (const line of lines) {
+    for (const line of convo) {
       assert.ok(line.timestamp, "timestamp is required on every line");
       assert.equal(line.sessionId, NEW_ID);
       assert.equal(line.cwd, "/work/dir");
       assert.equal(line.isSidechain, false);
     }
 
-    assert.equal(lines[0]!.type, "user");
-    assert.match(JSON.stringify(lines[0]!.message), /imported from Codex/);
+    assert.equal(convo[0]!.type, "user");
+    assert.match(JSON.stringify(convo[0]!.message), /imported from Codex/);
 
-    const assistant = lines[2]!;
+    const assistant = convo[2]!;
     assert.equal(assistant.type, "assistant");
     assert.equal(assistant.message["role"], "assistant");
     assert.equal(assistant.message["stop_reason"], "end_turn");

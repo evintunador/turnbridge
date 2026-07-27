@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { ConversationSummary } from "../types.js";
-import { buildSessionLines } from "../targets/claude-code.js";
+import { buildSessionLines, conversationLines } from "../targets/claude-code.js";
 import { buildRolloutLines } from "../targets/codex.js";
 import { isNonDecreasing, normalizeTimestamp } from "../timestamps.js";
 import { turnDraft } from "./helpers.js";
@@ -61,7 +61,8 @@ test("claude: every line carries a millisecond-precision UTC timestamp", () => {
     { role: "assistant", text: "a", occurredAt: "2026-07-21T08:36:05.5+02:00" },
   ]);
   const lines = buildSessionLines(summary, "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee", "/repo", "2.1.215", NOW);
-  for (const line of lines) {
+  const convo = conversationLines(lines);
+  for (const line of convo) {
     assert.match(
       line.timestamp,
       /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/,
@@ -87,24 +88,31 @@ test("codex: every line carries a millisecond-precision UTC timestamp", () => {
 
 test("claude: history lines preserve source order and never reorder real events", () => {
   const lines = buildSessionLines(SAMPLE, "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee", "/repo", "2.1.215", NOW);
+  const convo = conversationLines(lines);
   // line 0 is turnbridge's synthetic import notice, stamped at fabrication
   // time; see the comment in buildSessionLines about why it is not backdated.
-  const history = lines.slice(1).map((l) => l.timestamp);
+  const history = convo.slice(1).map((l) => l.timestamp);
   assert.ok(isNonDecreasing(history), `history went backward: ${history.join(", ")}`);
 });
 
 test("claude: sessionId field matches the filename id on every line (spec §7)", () => {
   const sessionId = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee";
   const lines = buildSessionLines(SAMPLE, sessionId, "/repo", "2.1.215", NOW);
-  assert.ok(lines.length > 1);
-  for (const line of lines) assert.equal(line.sessionId, sessionId);
+  const convo = conversationLines(lines);
+  assert.ok(convo.length > 1);
+  for (const line of convo) assert.equal(line.sessionId, sessionId);
+  // the cosmetic ai-title line carries the id too, and must agree
+  const title = lines.find((l) => l.type === "ai-title");
+  assert.ok(title, "fabricated sessions carry an ai-title line for the picker");
+  assert.equal((title as { sessionId: string }).sessionId, sessionId);
 });
 
 test("claude: uuids are unique and parentUuid chains without dangling refs (spec §7)", () => {
   const lines = buildSessionLines(SAMPLE, "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee", "/repo", "2.1.215", NOW);
+  const convo = conversationLines(lines);
   const seen = new Set<string>();
   let expectedParent: string | null = null;
-  for (const line of lines) {
+  for (const line of convo) {
     assert.equal(seen.has(line.uuid), false, `duplicate uuid ${line.uuid}`);
     seen.add(line.uuid);
     assert.equal(line.parentUuid, expectedParent, "parentUuid must chain to the previous line");
@@ -113,5 +121,30 @@ test("claude: uuids are unique and parentUuid chains without dangling refs (spec
     }
     expectedParent = line.uuid;
   }
-  assert.equal(seen.size, lines.length);
+  assert.equal(seen.size, convo.length);
+});
+
+test("claude: picker title names the conversation, not the import notice", () => {
+  const lines = buildSessionLines(SAMPLE, "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee", "/repo", "2.1.215", NOW);
+  const title = lines.find((l) => l.type === "ai-title") as { aiTitle: string } | undefined;
+  assert.ok(title);
+  // the picker falls back to the first user message when no ai-title exists,
+  // and that message is turnbridge's own notice — identical for every bridge
+  assert.doesNotMatch(title!.aiTitle, /turnbridge import notice/);
+  assert.match(title!.aiTitle, /^first question \(from Codex\)$/);
+});
+
+test("claude: picker title falls back when no human turn carries text", () => {
+  const agentOnly = summaryOf("codex", [{ role: "assistant", text: "thinking out loud" }]);
+  const lines = buildSessionLines(agentOnly, "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee", "/repo", "2.1.215", NOW);
+  const title = lines.find((l) => l.type === "ai-title") as { aiTitle: string } | undefined;
+  assert.equal(title?.aiTitle, "Imported from Codex");
+});
+
+test("claude: long first messages are truncated for the picker", () => {
+  const wordy = summaryOf("codex", [{ role: "user", text: "x".repeat(200) }]);
+  const lines = buildSessionLines(wordy, "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee", "/repo", "2.1.215", NOW);
+  const title = lines.find((l) => l.type === "ai-title") as { aiTitle: string } | undefined;
+  assert.ok(title!.aiTitle.length < 80, `title too long for a picker row: ${title!.aiTitle.length}`);
+  assert.match(title!.aiTitle, /…\s\(from Codex\)$/);
 });

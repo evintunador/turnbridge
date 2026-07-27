@@ -48,6 +48,20 @@ interface SessionLine {
   timestamp: string;
 }
 
+/** Cosmetic `ai-title` record — what the resume picker titles a session by. */
+interface TitleLine {
+  type: "ai-title";
+  aiTitle: string;
+  sessionId: string;
+}
+
+export type FabricatedLine = SessionLine | TitleLine;
+
+/** The `user`/`assistant` lines — i.e. everything the parentUuid walk sees. */
+export function conversationLines(lines: FabricatedLine[]): SessionLine[] {
+  return lines.filter((l): l is SessionLine => l.type === "user" || l.type === "assistant");
+}
+
 interface LineSpec {
   type: "user" | "assistant";
   content: unknown;
@@ -106,13 +120,41 @@ function convertBlocks(
   return out;
 }
 
+/**
+ * Picker title for a bridged session.
+ *
+ * Verified by scripts/probe-picker.mjs: the picker titles a session by its
+ * `ai-title` line, falling back to the first user message when there is none.
+ * Fabricated sessions had no such line, so every bridged conversation showed
+ * up in the picker titled by turnbridge's own import notice — identical for
+ * every bridge, and describing the machinery rather than the conversation.
+ * Naming it after the first thing the human actually said is both more useful
+ * and closer to what the title would have been natively.
+ */
+function pickerTitle(summary: ConversationSummary): string {
+  const label = cliLabel(summary.source);
+  for (const event of summary.events) {
+    if (event.actor.type !== "human") continue;
+    const content = turnContent(event);
+    const text = content?.blocks
+      .map((b) => (b.type === "text" && typeof b.text === "string" ? b.text : ""))
+      .join(" ")
+      .trim();
+    if (!text) continue;
+    const oneLine = text.replace(/\s+/g, " ");
+    const snippet = oneLine.length > 48 ? `${oneLine.slice(0, 47)}…` : oneLine;
+    return `${snippet} (from ${label})`;
+  }
+  return `Imported from ${label}`;
+}
+
 export function buildSessionLines(
   summary: ConversationSummary,
   sessionId: string,
   cwd: string,
   version: string,
   now: Date,
-): SessionLine[] {
+): FabricatedLine[] {
   const specs: LineSpec[] = [
     {
       type: "user",
@@ -189,7 +231,10 @@ export function buildSessionLines(
     });
     parentUuid = uuid;
   }
-  return lines;
+  // Trailing placement verified safe by probe-session-invariants.mjs: the
+  // parentUuid walk starts at the last line but skips non-conversation types,
+  // so a trailing ai-title does not truncate history.
+  return [...lines, { type: "ai-title", aiTitle: pickerTitle(summary), sessionId }];
 }
 
 export const claudeCodeTarget: TargetAdapter = {

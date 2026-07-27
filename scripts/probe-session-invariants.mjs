@@ -88,6 +88,20 @@ const VARIANTS = {
     );
   },
 
+  // An `ai-title` line is what the picker actually titles a session by
+  // (probe-picker.mjs). Without one, a bridged session is titled by its first
+  // user message — which for us is the import notice. Before emitting one we
+  // need to know it cannot disturb the parentUuid walk, which starts at the
+  // LAST line: a trailing non-conversation line is the risky placement.
+  "ai-title-last": (lines) => [
+    ...lines,
+    { type: "ai-title", aiTitle: "Probe Title", sessionId: lines[0]?.sessionId },
+  ],
+  "ai-title-first": (lines) => [
+    { type: "ai-title", aiTitle: "Probe Title", sessionId: lines[0]?.sessionId },
+    ...lines,
+  ],
+
   // spec §7: "behavior on mismatch is unknown; recommend always keeping them identical"
   "sessionid-mismatch": (lines) =>
     lines.map((l) => ({ ...l, sessionId: "00000000-0000-4000-8000-000000000000" })),

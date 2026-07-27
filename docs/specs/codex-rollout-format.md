@@ -370,8 +370,15 @@ keyed on role. It diverges from our verified-safe approach in two ways worth fla
    An orphaned `function_call_output` also does not error, but it carries no `name` at all, so
    the tool's identity is lost; unpaired results therefore stay text-folded.
    **`custom_tool_call` remains unverified** and is still not fabricated.
-3. **Picker/`--all` cwd-filtering exact matching logic** (prefix? exact string? normalized path?)
-   was not tested beyond reading the `--help` text; only direct `resume <id>` was verified.
+3. **Picker/`--all` cwd-filtering — RESOLVED: exact string match** (probe, 2026-07-27,
+   codex-cli 0.145.0, `scripts/probe-picker.mjs`, driven through a pty). Three sessions were
+   planted with `session_meta.cwd` set to the launch dir, a *subdirectory* of it, and an
+   unrelated dir. The default picker showed only the exact-match session — the nested one was
+   filtered out too, so matching is an exact string comparison, **not** a path-prefix match.
+   `codex resume --all` showed all three, confirming it lifts the filter entirely.
+   Consequence for turnbridge: a fabricated session sets `session_meta.cwd` to the launch cwd,
+   so it appears in the default picker only from that exact directory — correct, but worth
+   knowing it will not surface from a subdirectory of the repo.
 4. **Very large fabricated histories — verified clean to 300 turns / ~217 KB** (probe,
    2026-07-27, codex-cli 0.145.0, `scripts/probe-large-history.mjs`). A fabricated 300-turn
    rollout resumed in ~5s with markers planted in both the first and last turns recalled: no
@@ -380,12 +387,15 @@ keyed on role. It diverges from our verified-safe approach in two ways worth fla
    **Beyond ~300 turns is deliberately unmeasured** — turnbridge passes history through
    untruncated and leaves fitting it to Codex's own compaction. Re-run with `PROBE_TURNS=N` to
    push the ceiling.
-5. **`base_instructions`**: real files carry a large (~18KB) system prompt string per session.
-   Omitting it entirely worked in our test (Codex presumably falls back to its own current
-   default system prompt for the *new* turn, while the fabricated *history* turns are still
-   replayed as-is) — but this means the fabricated session's replayed history won't perfectly
-   match "what system prompt was actually active" if that matters for turnbridge's use case.
-   Not a blocker for the stated goal (make prior context visible), just noted for completeness.
+5. **`base_instructions` — RESOLVED as a deliberate omission, not an open question.** Real
+   files carry a large (~18KB) system prompt per session. Omitting it works (verified originally,
+   and continuously since by `probe-codex-content.mjs` and the 300-turn history probe): Codex
+   falls back to its own current default for the new turn while the fabricated history replays
+   as-is. turnbridge will keep omitting it, because the alternative is worse: the source
+   session's *actual* system prompt is not something turnbridge can know — it belongs to the
+   other CLI and is not captured in the ledger — so writing any value here would be inventing
+   a claim about what the original session was told. An honest gap beats a fabricated one, and
+   the stated goal (make prior context visible) does not depend on it.
 6. **`encrypted_content` for `reasoning` items**: confirmed unfabricatable and confirmed safe to
    omit outright (don't emit `reasoning` response_items at all rather than trying to synthesize
    fake ciphertext, which would almost certainly be rejected or ignored as garbage by the API if
