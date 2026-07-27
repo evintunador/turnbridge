@@ -372,9 +372,14 @@ keyed on role. It diverges from our verified-safe approach in two ways worth fla
    **`custom_tool_call` remains unverified** and is still not fabricated.
 3. **Picker/`--all` cwd-filtering exact matching logic** (prefix? exact string? normalized path?)
    was not tested beyond reading the `--help` text; only direct `resume <id>` was verified.
-4. **Very large fabricated histories**: untested whether extremely large fabricated
-   `response_item` sequences (e.g. thousands of turns) hit any different code path (e.g.
-   automatic `compacted` triggering, size limits) versus the small 2-3 turn case we verified.
+4. **Very large fabricated histories — verified clean to 300 turns / ~217 KB** (probe,
+   2026-07-27, codex-cli 0.145.0, `scripts/probe-large-history.mjs`). A fabricated 300-turn
+   rollout resumed in ~5s with markers planted in both the first and last turns recalled: no
+   size limit, no rejection, and no evidence of early history being dropped on load. Automatic
+   `compacted` triggering was not observed at this size.
+   **Beyond ~300 turns is deliberately unmeasured** — turnbridge passes history through
+   untruncated and leaves fitting it to Codex's own compaction. Re-run with `PROBE_TURNS=N` to
+   push the ceiling.
 5. **`base_instructions`**: real files carry a large (~18KB) system prompt string per session.
    Omitting it entirely worked in our test (Codex presumably falls back to its own current
    default system prompt for the *new* turn, while the fabricated *history* turns are still

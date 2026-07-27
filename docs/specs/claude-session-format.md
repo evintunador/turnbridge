@@ -382,9 +382,17 @@ verified empirical result exactly — no divergence there.
   those forms *can* reach a fabricator; turnbridge therefore normalizes every
   timestamp it writes to millisecond UTC (`src/timestamps.ts`) rather than
   relying on tolerance it has not measured.
-- **Large/long sessions untested** — all fabricated test files were 2-3
-  lines. Unknown if there's a line-count or byte-size behavior cliff, or
-  whether very long fabricated histories affect context-loading correctly.
+- **Large/long sessions — verified clean to 300 turns / ~215 KB** (probe,
+  2026-07-27, claude 2.1.220, `scripts/probe-large-history.mjs`). A fabricated
+  300-turn session resumed in ~5s with markers planted in *both* the first and
+  last turns recalled, so early history is not silently dropped when a long
+  history arrives all at once at session start rather than accumulating turn by
+  turn. No line-count or byte-size cliff was found below that ceiling.
+  **Beyond ~300 turns is deliberately unmeasured**: turnbridge passes history
+  through without truncating, and fitting it is Claude Code's own job (it
+  auto-compacts). The useful claim is a verified-clean range, not the exact
+  cliff. Raise the ceiling with `PROBE_TURNS=N` if that assumption needs
+  retesting.
 - **`sessionId` mismatch (inline field vs. filename) — RESOLVED, tolerated**
   (probe, 2026-07-27). A file whose every line carried a `sessionId` unrelated
   to its filename UUID resumed normally with full history: lookup is by
