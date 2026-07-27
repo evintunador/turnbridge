@@ -169,12 +169,12 @@ directory from the launch cwd and looks only there.
 
 **Resume picker / `/resume` UI**: not directly testable non-interactively in
 this sandbox (no TUI). Based on file evidence: session titles shown in the
-picker most likely come from the `{"type":"ai-title","aiTitle":"...",
+picker come from the `{"type":"ai-title","aiTitle":"...",
 "sessionId":"..."}` line (a short LLM-generated title, observed identical
 across all lines with that type in a given file, so likely just periodically
-rewritten/duplicated) with fallback to the first user message if absent —
-this is an inference from file structure, **not independently confirmed by
-an interactive test**; treat as a risk/unknown (see §7). The `ai-title` line
+rewritten/duplicated) with fallback to the first user message if absent.
+Originally an inference from file structure; **confirmed against the live
+interactive picker on 2026-07-27** — see §7. The `ai-title` line
 is cosmetic only — omitting it did not break `--resume <id>` (direct-ID
 resume never showed title UI in `-p` mode).
 

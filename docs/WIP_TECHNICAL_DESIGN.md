@@ -144,7 +144,9 @@ before broadening):
 - **Spec verification gaps** *(closed 2026-07-27, claude 2.1.220 /
   codex-cli 0.145.0)*. Every unknown the two spec docs listed has been
   probed and each is now marked RESOLVED in place with its date and CLI
-  version. Findings that changed behavior:
+  version. (Minor pre-existing notes elsewhere in those docs — the `version`
+  string's cosmetic role, sidechain turns — were out of scope and are
+  untouched.) Findings that changed behavior:
   - **Duplicate `uuid` silently drops a turn** — resume still exits 0 with no
     warning. The one genuinely load-bearing invariant of the four; the other
     three (out-of-order timestamps, `sessionId`/filename mismatch, dangling
