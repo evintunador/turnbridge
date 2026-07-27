@@ -135,12 +135,34 @@ before broadening):
   PR. Needs an `ANTHROPIC_API_KEY` repo secret and comfort with CI pushing
   branches.
 - Revalidation tooling exists and is the bar for widening version pins:
-  `npm run smoke:interactive` (real-TUI render check, both targets) plus
-  `scripts/probe-codex-content.mjs` (headless model-recall probe).
-- Still-open verification gaps from the spec docs: large/long histories
-  (size cliffs, Codex auto-compaction), timestamp-format tolerance,
-  sessionId/filename mismatch, duplicate or dangling uuid handling.
-- **Encrypted-reasoning replay** *(shipped, needs a turnbridge version bump)*
+  `npm run smoke:interactive` (real-TUI render check, both targets),
+  `scripts/probe-codex-content.mjs` (headless model-recall probe),
+  `probe-session-invariants.mjs` (malformed-session tolerance),
+  `probe-large-history.mjs` (long histories, `PROBE_TURNS=N`),
+  `probe-codex-function-call.mjs` (structured tool replay), and
+  `probe-picker.mjs` (pty-driven picker behavior).
+- **Spec verification gaps** *(closed 2026-07-27, claude 2.1.220 /
+  codex-cli 0.145.0)*. Every unknown the two spec docs listed has been
+  probed and each is now marked RESOLVED in place with its date and CLI
+  version. Findings that changed behavior:
+  - **Duplicate `uuid` silently drops a turn** — resume still exits 0 with no
+    warning. The one genuinely load-bearing invariant of the four; the other
+    three (out-of-order timestamps, `sessionId`/filename mismatch, dangling
+    `parentUuid`) are all tolerated. `src/test/fabricate-invariants.test.ts`
+    guards it.
+  - **Structured tool replay into Codex** — a `function_call` whose `name` is
+    a tool Codex never registered is accepted, so Claude→Codex no longer
+    flattens tool history to prose. Unpaired results stay prose, because an
+    orphaned output carries no tool name at all.
+  - **Bridged sessions are titled by their conversation**, not by the import
+    notice: the picker reads `ai-title`, which fabricated sessions lacked.
+  - Timestamps are normalized to millisecond UTC on write rather than trusting
+    tolerance nobody measured; the fake `estimateTokens` heuristic is gone in
+    favor of characters/bytes, now reported on the fabrication path too.
+  Deliberately left unmeasured: histories beyond ~300 turns (both targets are
+  clean to there, and fitting more is the target CLI's own job),
+  `custom_tool_call` fabrication, and which key the Claude picker sorts on.
+- **Encrypted-reasoning replay** *(shipped in 0.2.0)*
   — Codex's `reasoning` items are ciphertext only OpenAI's servers can
   decrypt; conversation-ledger 0.10.0 preserves them losslessly and opaquely
   (`kind: "reasoning"`, ciphertext in `raw.data`, `content` a bare opacity
