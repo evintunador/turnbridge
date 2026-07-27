@@ -117,12 +117,13 @@ export function buildSessionLines(
     {
       type: "user",
       // Fabrication time, which is *newer* than every history line below it, so
-      // the file steps backward exactly once at line 1. Deliberate pending the
-      // ordering probe (docs/specs/claude-session-format.md §7): backdating this
-      // to just before the first real event would make the file monotonic, but
-      // if the resume picker sorts on line timestamps rather than file mtime it
-      // would also bury a freshly bridged session under genuinely old ones.
-      // Don't "fix" the ordering until that trade-off is measured.
+      // the file steps backward exactly once at line 1. Verified deliberate, not
+      // an oversight: probe-session-invariants.mjs resumed both this and a
+      // backdated-monotonic variant with full history intact, so ordering is not
+      // load-bearing for resume. Keeping `now` is the weakly better of two
+      // safe options — if the picker sorts on line timestamps rather than file
+      // mtime, backdating would bury a freshly bridged session under genuinely
+      // old ones, and no reading of the evidence makes it better.
       timestamp: now.toISOString(),
       content: [
         {
