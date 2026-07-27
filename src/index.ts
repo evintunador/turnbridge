@@ -1,6 +1,6 @@
 /** Public library surface. */
 export { listConversations, type ListOptions } from "./conversations.js";
-export { renderTranscript, estimateTokens } from "./transcript.js";
+export { renderTranscript, transcriptSize, formatSize } from "./transcript.js";
 export { writeBootstrapTranscript, bootstrapPrompt } from "./bootstrap.js";
 export { resumeCommand, renderConversationRow, type ResumeFlags } from "./resume.js";
 export { targets, targetFor, installedTargets } from "./targets/index.js";

@@ -1,5 +1,7 @@
 import { spawnSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
+import { normalizeTimestamp } from "../timestamps.js";
+import { formatSize, transcriptSize } from "../transcript.js";
 import { mkdir, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
@@ -114,6 +116,13 @@ export function buildSessionLines(
   const specs: LineSpec[] = [
     {
       type: "user",
+      // Fabrication time, which is *newer* than every history line below it, so
+      // the file steps backward exactly once at line 1. Deliberate pending the
+      // ordering probe (docs/specs/claude-session-format.md §7): backdating this
+      // to just before the first real event would make the file monotonic, but
+      // if the resume picker sorts on line timestamps rather than file mtime it
+      // would also bury a freshly bridged session under genuinely old ones.
+      // Don't "fix" the ordering until that trade-off is measured.
       timestamp: now.toISOString(),
       content: [
         {
@@ -135,7 +144,11 @@ export function buildSessionLines(
     if (blocks.length === 0) continue;
     // tool results ride on user lines in Claude's format
     const type = event.actor.type === "human" || content.role === "tool_result" ? "user" : "assistant";
-    const spec: LineSpec = { type, content: blocks, timestamp: event.occurred_at };
+    const spec: LineSpec = {
+      type,
+      content: blocks,
+      timestamp: normalizeTimestamp(event.occurred_at, now),
+    };
     if (type === "assistant" && event.actor.type === "agent" && event.actor.id) {
       spec.model = event.actor.id;
     }
@@ -217,11 +230,12 @@ export const claudeCodeTarget: TargetAdapter = {
     await mkdir(dir, { recursive: true });
     const path = join(dir, `${sessionId}.jsonl`);
     const lines = buildSessionLines(summary, sessionId, cwd, version, new Date());
-    await writeFile(path, lines.map((l) => JSON.stringify(l)).join("\n") + "\n");
+    const body = lines.map((l) => JSON.stringify(l)).join("\n") + "\n";
+    await writeFile(path, body);
 
     notes.push(
       `fabricated Claude Code session ${sessionId} from ${cliLabel(summary.source)} history (${summary.turnCount} turns)`,
-      `session file: ${path}`,
+      `session file: ${path} (${formatSize(transcriptSize(body))})`,
     );
     return {
       command: "claude",

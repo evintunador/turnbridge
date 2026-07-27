@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import type { EvidenceEvent } from "conversation-ledger";
-import { estimateTokens, renderTranscript } from "../transcript.js";
+import { formatSize, renderTranscript, transcriptSize } from "../transcript.js";
 import { turnContent, type ConversationSummary } from "../types.js";
 
 let seq = 0;
@@ -180,11 +180,16 @@ test("assistant heading includes the model id when present", () => {
   assert.match(md, /## Assistant \(gpt-test\)/);
 });
 
-// --- estimateTokens ---
+// --- transcriptSize / formatSize ---
 
-test("estimateTokens scales with text length (chars/4, rounded up)", () => {
-  assert.equal(estimateTokens(""), 0);
-  assert.equal(estimateTokens("abcd"), 1);
-  assert.equal(estimateTokens("abcde"), 2);
-  assert.equal(estimateTokens("a".repeat(401)), 101);
+test("transcriptSize reports characters and utf8 bytes, not a token guess", () => {
+  assert.deepEqual(transcriptSize(""), { characters: 0, bytes: 0 });
+  assert.deepEqual(transcriptSize("abcd"), { characters: 4, bytes: 4 });
+  // multi-byte content: characters and bytes legitimately diverge
+  assert.deepEqual(transcriptSize("héllo→"), { characters: 6, bytes: 9 });
+});
+
+test("formatSize renders KB below a megabyte and MB above it", () => {
+  assert.match(formatSize(transcriptSize("a".repeat(2048))), /^2,048 characters \(~2 KB\)$/);
+  assert.match(formatSize(transcriptSize("a".repeat(2 * 1024 * 1024))), /\(~2\.0 MB\)$/);
 });

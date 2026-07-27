@@ -5,6 +5,8 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import type { EvidenceEvent } from "conversation-ledger";
 import { bootstrapPrompt } from "../bootstrap.js";
+import { normalizeTimestamp } from "../timestamps.js";
+import { formatSize, transcriptSize } from "../transcript.js";
 import { binaryOnPath } from "../launch.js";
 import { cliLabel, turnContent, type ConversationSummary, type TurnBlock } from "../types.js";
 import { FabricationUnsupportedError, type LaunchPlan, type TargetAdapter } from "./types.js";
@@ -111,11 +113,13 @@ function eligibleReasoning(summary: ConversationSummary, replayReasoning: boolea
 }
 
 /** The verbatim `{type: "response_item", payload: {type: "reasoning", ...}}` line, if shaped as expected. */
-function reasoningRolloutLine(event: EvidenceEvent): RolloutLine | null {
+function reasoningRolloutLine(event: EvidenceEvent, now: Date): RolloutLine | null {
   const line = event.raw?.data as { type?: unknown; payload?: unknown } | undefined;
   if (line?.type !== "response_item" || !line.payload || typeof line.payload !== "object") return null;
   return {
-    timestamp: event.occurred_at,
+    // Outer rollout field only — `payload` (where the ciphertext lives) stays
+    // byte-identical, since that is what the provider has to be able to decrypt.
+    timestamp: normalizeTimestamp(event.occurred_at, now),
     type: "response_item",
     payload: line.payload as Record<string, unknown>,
   };
@@ -165,7 +169,7 @@ export function buildRolloutLines(
   for (const event of summary.events) {
     if (event.kind === "reasoning") {
       if (!replayReasoning || event.producer.source !== "codex") continue;
-      const line = reasoningRolloutLine(event);
+      const line = reasoningRolloutLine(event, now);
       if (line) lines.push(line);
       continue;
     }
@@ -174,7 +178,7 @@ export function buildRolloutLines(
     const text = content.blocks.map(foldBlock).filter((t) => t.trim()).join("\n\n");
     if (!text) continue;
     const role = event.actor.type === "human" ? "user" : "assistant";
-    lines.push(...turnLines(event.occurred_at, role, text));
+    lines.push(...turnLines(normalizeTimestamp(event.occurred_at, now), role, text));
   }
   return lines;
 }
@@ -220,11 +224,12 @@ export const codexTarget: TargetAdapter = {
     await mkdir(dir, { recursive: true });
     const path = join(dir, `rollout-${stamp}-${sessionId}.jsonl`);
     const lines = buildRolloutLines(summary, sessionId, cwd, version, now, opts.replayReasoning);
-    await writeFile(path, lines.map((l) => JSON.stringify(l)).join("\n") + "\n");
+    const body = lines.map((l) => JSON.stringify(l)).join("\n") + "\n";
+    await writeFile(path, body);
 
     notes.push(
       `fabricated Codex session ${sessionId} from ${cliLabel(summary.source)} history (${summary.turnCount} turns)`,
-      `rollout file: ${path}`,
+      `rollout file: ${path} (${formatSize(transcriptSize(body))})`,
     );
     const replayCount = eligibleReasoning(summary, opts.replayReasoning).length;
     if (replayCount > 0) {
