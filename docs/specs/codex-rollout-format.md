@@ -241,8 +241,14 @@ compaction event" — low risk to fabricate the same way as regular messages if 
 
 ## 5. Representing foreign tool calls (e.g., Claude `tool_use`/`tool_result`)
 
-**Recommendation: fold foreign tool calls into plain `message` content (input_text/output_text),
-not into `function_call`/`function_call_output` or `custom_tool_call` records.**
+> **Superseded in part — see §5.1.** The recommendation below was written when
+> `function_call` replay was an untested risk. It has since been tested and is safe for
+> *paired* calls, which turnbridge now emits. The reasoning is kept because it still
+> explains the unpaired and `custom_tool_call` cases, which remain text-folded.
+
+**Original recommendation: fold foreign tool calls into plain `message` content
+(input_text/output_text), not into `function_call`/`function_call_output` or `custom_tool_call`
+records.**
 
 Reasoning:
 - The only two `response_item` shapes we verified Codex will read back cleanly, with zero risk,
@@ -275,6 +281,39 @@ Reasoning:
 - For turnbridge's stated goal (make the resumed agent aware of what happened, not literally
   re-execute historical tool calls), folding into message text is strictly sufficient — verified
   by our experiment — and avoids every open question about tool-schema/call_id validation.
+
+---
+
+## 5.1 Structured tool replay (verified 2026-07-27, codex-cli 0.145.0)
+
+`scripts/probe-codex-function-call.mjs` tested the risk §5 declined to test. Against a live
+Codex, three fabricated histories:
+
+| variant | resume result |
+|---|---|
+| text-folded (the old behavior) | history intact, tool named |
+| **paired `function_call` + `function_call_output`, foreign `name`** | **history intact, tool named, no rejection** |
+| orphaned `function_call_output` | no error, but the tool's identity is gone |
+
+So a foreign tool name is *not* rejected, and `call_id` is not validated against anything the
+backend knows. What matters is pairing.
+
+turnbridge therefore emits, for the Codex target:
+
+- a `tool_use` block → `function_call` response_item, `name` verbatim, `call_id` = the source
+  tool-use id, `arguments` as a **JSON string** (not an object — the Responses API requires it);
+- a `tool_result` block whose `tool_use_id` matches a call seen earlier in the same conversation
+  → `function_call_output` with that `call_id`;
+- an **unpaired** `tool_result` → plain text (`[tool result] …`), since an orphaned output would
+  silently discard the tool name;
+- `custom_tool_call` → never fabricated; still unverified.
+
+Codex has no generic tool-call `event_msg` type (only tool-specific ones like `patch_apply_end`),
+so a `function_call` alone is invisible in TUI scrollback. Since `event_msg` is display-only and
+`response_item` is what the model reads, turnbridge writes both: the structured item for the
+model and an `agent_message` twin for the human. Neither duplicates the other in model context.
+
+Historical tool calls are context, never re-executed.
 
 ---
 
@@ -321,19 +360,42 @@ keyed on role. It diverges from our verified-safe approach in two ways worth fla
    API. Re-verify against the installed `codex --version` before relying on this in production;
    the minimal schema in §3 is the safest bet for forward/backward compatibility since it's the
    smallest surface area.
-2. **`function_call`/`custom_tool_call` replay safety** is unverified (see §5) — don't use them
-   for fabrication without separately testing against the target Codex version.
-3. **Picker/`--all` cwd-filtering exact matching logic** (prefix? exact string? normalized path?)
-   was not tested beyond reading the `--help` text; only direct `resume <id>` was verified.
-4. **Very large fabricated histories**: untested whether extremely large fabricated
-   `response_item` sequences (e.g. thousands of turns) hit any different code path (e.g.
-   automatic `compacted` triggering, size limits) versus the small 2-3 turn case we verified.
-5. **`base_instructions`**: real files carry a large (~18KB) system prompt string per session.
-   Omitting it entirely worked in our test (Codex presumably falls back to its own current
-   default system prompt for the *new* turn, while the fabricated *history* turns are still
-   replayed as-is) — but this means the fabricated session's replayed history won't perfectly
-   match "what system prompt was actually active" if that matters for turnbridge's use case.
-   Not a blocker for the stated goal (make prior context visible), just noted for completeness.
+2. **`function_call` replay safety — RESOLVED, safe** (probe, 2026-07-27, codex-cli 0.145.0,
+   `scripts/probe-codex-function-call.mjs`). A well-formed `function_call` +
+   `function_call_output` pair whose `name` is a tool Codex has never registered (`Edit`, a
+   Claude tool) replays with no API rejection, and the resumed model correctly names the tool it
+   sees. The feared foreign-name/`call_id` validation failure did not occur. Verified end to end
+   through turnbridge's own `fabricate()`, not just hand-written files, so §5's
+   text-folding recommendation is superseded for *paired* calls — see §5.1.
+   An orphaned `function_call_output` also does not error, but it carries no `name` at all, so
+   the tool's identity is lost; unpaired results therefore stay text-folded.
+   **`custom_tool_call` remains unverified** and is still not fabricated.
+3. **Picker/`--all` cwd-filtering — RESOLVED: exact string match** (probe, 2026-07-27,
+   codex-cli 0.145.0, `scripts/probe-picker.mjs`, driven through a pty). Three sessions were
+   planted with `session_meta.cwd` set to the launch dir, a *subdirectory* of it, and an
+   unrelated dir. The default picker showed only the exact-match session — the nested one was
+   filtered out too, so matching is an exact string comparison, **not** a path-prefix match.
+   `codex resume --all` showed all three, confirming it lifts the filter entirely.
+   Consequence for turnbridge: a fabricated session sets `session_meta.cwd` to the launch cwd,
+   so it appears in the default picker only from that exact directory — correct, but worth
+   knowing it will not surface from a subdirectory of the repo.
+4. **Very large fabricated histories — verified clean to 300 turns / ~217 KB** (probe,
+   2026-07-27, codex-cli 0.145.0, `scripts/probe-large-history.mjs`). A fabricated 300-turn
+   rollout resumed in ~5s with markers planted in both the first and last turns recalled: no
+   size limit, no rejection, and no evidence of early history being dropped on load. Automatic
+   `compacted` triggering was not observed at this size.
+   **Beyond ~300 turns is deliberately unmeasured** — turnbridge passes history through
+   untruncated and leaves fitting it to Codex's own compaction. Re-run with `PROBE_TURNS=N` to
+   push the ceiling.
+5. **`base_instructions` — RESOLVED as a deliberate omission, not an open question.** Real
+   files carry a large (~18KB) system prompt per session. Omitting it works (verified originally,
+   and continuously since by `probe-codex-content.mjs` and the 300-turn history probe): Codex
+   falls back to its own current default for the new turn while the fabricated history replays
+   as-is. turnbridge will keep omitting it, because the alternative is worse: the source
+   session's *actual* system prompt is not something turnbridge can know — it belongs to the
+   other CLI and is not captured in the ledger — so writing any value here would be inventing
+   a claim about what the original session was told. An honest gap beats a fabricated one, and
+   the stated goal (make prior context visible) does not depend on it.
 6. **`encrypted_content` for `reasoning` items**: confirmed unfabricatable and confirmed safe to
    omit outright (don't emit `reasoning` response_items at all rather than trying to synthesize
    fake ciphertext, which would almost certainly be rejected or ignored as garbage by the API if

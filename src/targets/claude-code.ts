@@ -1,5 +1,7 @@
 import { spawnSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
+import { normalizeTimestamp } from "../timestamps.js";
+import { formatSize, transcriptSize } from "../transcript.js";
 import { mkdir, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
@@ -44,6 +46,20 @@ interface SessionLine {
   message: Record<string, unknown>;
   uuid: string;
   timestamp: string;
+}
+
+/** Cosmetic `ai-title` record — what the resume picker titles a session by. */
+interface TitleLine {
+  type: "ai-title";
+  aiTitle: string;
+  sessionId: string;
+}
+
+export type FabricatedLine = SessionLine | TitleLine;
+
+/** The `user`/`assistant` lines — i.e. everything the parentUuid walk sees. */
+export function conversationLines(lines: FabricatedLine[]): SessionLine[] {
+  return lines.filter((l): l is SessionLine => l.type === "user" || l.type === "assistant");
 }
 
 interface LineSpec {
@@ -104,16 +120,52 @@ function convertBlocks(
   return out;
 }
 
+/**
+ * Picker title for a bridged session.
+ *
+ * Verified by scripts/probe-picker.mjs: the picker titles a session by its
+ * `ai-title` line, falling back to the first user message when there is none.
+ * Fabricated sessions had no such line, so every bridged conversation showed
+ * up in the picker titled by turnbridge's own import notice — identical for
+ * every bridge, and describing the machinery rather than the conversation.
+ * Naming it after the first thing the human actually said is both more useful
+ * and closer to what the title would have been natively.
+ */
+function pickerTitle(summary: ConversationSummary): string {
+  const label = cliLabel(summary.source);
+  for (const event of summary.events) {
+    if (event.actor.type !== "human") continue;
+    const content = turnContent(event);
+    const text = content?.blocks
+      .map((b) => (b.type === "text" && typeof b.text === "string" ? b.text : ""))
+      .join(" ")
+      .trim();
+    if (!text) continue;
+    const oneLine = text.replace(/\s+/g, " ");
+    const snippet = oneLine.length > 48 ? `${oneLine.slice(0, 47)}…` : oneLine;
+    return `${snippet} (from ${label})`;
+  }
+  return `Imported from ${label}`;
+}
+
 export function buildSessionLines(
   summary: ConversationSummary,
   sessionId: string,
   cwd: string,
   version: string,
   now: Date,
-): SessionLine[] {
+): FabricatedLine[] {
   const specs: LineSpec[] = [
     {
       type: "user",
+      // Fabrication time, which is *newer* than every history line below it, so
+      // the file steps backward exactly once at line 1. Verified deliberate, not
+      // an oversight: probe-session-invariants.mjs resumed both this and a
+      // backdated-monotonic variant with full history intact, so ordering is not
+      // load-bearing for resume. Keeping `now` is the weakly better of two
+      // safe options — if the picker sorts on line timestamps rather than file
+      // mtime, backdating would bury a freshly bridged session under genuinely
+      // old ones, and no reading of the evidence makes it better.
       timestamp: now.toISOString(),
       content: [
         {
@@ -135,7 +187,11 @@ export function buildSessionLines(
     if (blocks.length === 0) continue;
     // tool results ride on user lines in Claude's format
     const type = event.actor.type === "human" || content.role === "tool_result" ? "user" : "assistant";
-    const spec: LineSpec = { type, content: blocks, timestamp: event.occurred_at };
+    const spec: LineSpec = {
+      type,
+      content: blocks,
+      timestamp: normalizeTimestamp(event.occurred_at, now),
+    };
     if (type === "assistant" && event.actor.type === "agent" && event.actor.id) {
       spec.model = event.actor.id;
     }
@@ -175,7 +231,10 @@ export function buildSessionLines(
     });
     parentUuid = uuid;
   }
-  return lines;
+  // Trailing placement verified safe by probe-session-invariants.mjs: the
+  // parentUuid walk starts at the last line but skips non-conversation types,
+  // so a trailing ai-title does not truncate history.
+  return [...lines, { type: "ai-title", aiTitle: pickerTitle(summary), sessionId }];
 }
 
 export const claudeCodeTarget: TargetAdapter = {
@@ -217,11 +276,12 @@ export const claudeCodeTarget: TargetAdapter = {
     await mkdir(dir, { recursive: true });
     const path = join(dir, `${sessionId}.jsonl`);
     const lines = buildSessionLines(summary, sessionId, cwd, version, new Date());
-    await writeFile(path, lines.map((l) => JSON.stringify(l)).join("\n") + "\n");
+    const body = lines.map((l) => JSON.stringify(l)).join("\n") + "\n";
+    await writeFile(path, body);
 
     notes.push(
       `fabricated Claude Code session ${sessionId} from ${cliLabel(summary.source)} history (${summary.turnCount} turns)`,
-      `session file: ${path}`,
+      `session file: ${path} (${formatSize(transcriptSize(body))})`,
     );
     return {
       command: "claude",

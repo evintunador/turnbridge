@@ -1,12 +1,12 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { configDir } from "./config.js";
-import { estimateTokens, renderTranscript } from "./transcript.js";
+import { renderTranscript, transcriptSize } from "./transcript.js";
 import { cliLabel, type ConversationSummary } from "./types.js";
 
 export interface BootstrapTranscript {
   path: string;
-  estimatedTokens: number;
+  size: { characters: number; bytes: number };
 }
 
 function sanitize(id: string): string {
@@ -22,7 +22,7 @@ export async function writeBootstrapTranscript(
   const text = renderTranscript(summary);
   const path = join(dir, `${sanitize(summary.id)}.md`);
   await writeFile(path, text);
-  return { path, estimatedTokens: estimateTokens(text) };
+  return { path, size: transcriptSize(text) };
 }
 
 /** Initial prompt for the fresh target session. Honest about what this is. */

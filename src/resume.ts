@@ -7,6 +7,7 @@ import { runLaunchPlan } from "./launch.js";
 import { withLedgerNotices } from "./ledger-io.js";
 import { confirm, pickFromList } from "./picker.js";
 import { installedTargets, targetFor } from "./targets/index.js";
+import { formatSize } from "./transcript.js";
 import { FabricationUnsupportedError, type LaunchPlan, type TargetAdapter } from "./targets/types.js";
 import { cliLabel, type CliName, type ConversationSummary } from "./types.js";
 import { turnbridgeVersion } from "./version.js";
@@ -140,7 +141,8 @@ async function buildPlan(
   const transcript = await writeBootstrapTranscript(summary);
   const plan = target.bootstrap(summary, cwd, transcript.path);
   plan.notes.push(
-    `transcript is ~${transcript.estimatedTokens.toLocaleString()} tokens; large histories may not fit the target's context`,
+    `transcript is ${formatSize(transcript.size)}; fitting it is the target CLI's own concern ` +
+      "(both apply their own compaction or truncation), so this is reported, not enforced",
   );
   return plan;
 }

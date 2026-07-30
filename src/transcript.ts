@@ -59,7 +59,22 @@ export function renderTranscript(summary: ConversationSummary): string {
   return lines.join("\n");
 }
 
-/** Rough context-size estimate for pre-launch warnings. */
-export function estimateTokens(text: string): number {
-  return Math.ceil(text.length / 4);
+/**
+ * Size of a rendered transcript, for pre-launch reporting.
+ *
+ * Deliberately not a token count. Turnbridge never tokenizes anything — it
+ * moves raw text — and a token figure would be doubly misleading here: token
+ * counts are not transferable across models with different tokenizers, and the
+ * whole point of a bridge is that the target model is not the source model.
+ * Characters and bytes are facts about the artifact we actually wrote.
+ */
+export function transcriptSize(text: string): { characters: number; bytes: number } {
+  return { characters: text.length, bytes: Buffer.byteLength(text, "utf8") };
+}
+
+/** Human-readable size for launch notes, e.g. `128,394 characters (~125 KB)`. */
+export function formatSize(size: { characters: number; bytes: number }): string {
+  const kb = size.bytes / 1024;
+  const approx = kb >= 1024 ? `~${(kb / 1024).toFixed(1)} MB` : `~${Math.round(kb)} KB`;
+  return `${size.characters.toLocaleString()} characters (${approx})`;
 }

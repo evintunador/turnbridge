@@ -43,8 +43,9 @@ test("writes the transcript under <configDir>/bootstrap, sanitizing the conversa
       assert.match(written, /hello there/);
       assert.match(written, /hi back/);
 
-      assert.equal(result.estimatedTokens, Math.ceil(written.length / 4));
-      assert.ok(result.estimatedTokens > 0);
+      assert.equal(result.size.characters, written.length);
+      assert.equal(result.size.bytes, Buffer.byteLength(written, "utf8"));
+      assert.ok(result.size.characters > 0);
     } finally {
       await cleanupRepo(repo);
     }
@@ -71,7 +72,7 @@ test("writing twice for the same conversation overwrites rather than appends", a
   });
 });
 
-test("estimatedTokens grows with a larger transcript", async () => {
+test("reported size grows with a larger transcript", async () => {
   await withTurnbridgeHome(async () => {
     const repo = await makeTempRepo();
     try {
@@ -89,7 +90,7 @@ test("estimatedTokens grows with a larger transcript", async () => {
       const big = all.find((c) => c.sessionId === SID2)!;
       const bigResult = await writeBootstrapTranscript(big);
 
-      assert.ok(bigResult.estimatedTokens > smallResult.estimatedTokens);
+      assert.ok(bigResult.size.characters > smallResult.size.characters);
     } finally {
       await cleanupRepo(repo);
     }

@@ -169,12 +169,12 @@ directory from the launch cwd and looks only there.
 
 **Resume picker / `/resume` UI**: not directly testable non-interactively in
 this sandbox (no TUI). Based on file evidence: session titles shown in the
-picker most likely come from the `{"type":"ai-title","aiTitle":"...",
+picker come from the `{"type":"ai-title","aiTitle":"...",
 "sessionId":"..."}` line (a short LLM-generated title, observed identical
 across all lines with that type in a given file, so likely just periodically
-rewritten/duplicated) with fallback to the first user message if absent —
-this is an inference from file structure, **not independently confirmed by
-an interactive test**; treat as a risk/unknown (see §7). The `ai-title` line
+rewritten/duplicated) with fallback to the first user message if absent.
+Originally an inference from file structure; **confirmed against the live
+interactive picker on 2026-07-27** — see §7. The `ai-title` line
 is cosmetic only — omitting it did not break `--resume <id>` (direct-ID
 resume never showed title UI in `-p` mode).
 
@@ -361,30 +361,66 @@ verified empirical result exactly — no divergence there.
   "hangs on load" behavior) that print mode skips. Recommend a manual
   interactive smoke test (`claude --resume <id>` with no `-p`) before
   shipping turnbridge broadly.
-- **Resume picker (`claude` / `/resume` with no ID) title source is
-  inferred, not confirmed** — likely `ai-title` line content, falling back to
-  first user message, but this is not independently verified against the
-  actual interactive picker UI.
-- **Timestamp format tolerance untested** — only millisecond-precision
-  RFC3339 `...Z` strings were tried and confirmed required-present; unknown
-  whether second-precision, offset-instead-of-Z, or out-of-order timestamps
-  across lines are tolerated. Chronological, millisecond-precision,
-  `Z`-suffixed timestamps are recommended to match real files exactly.
-  Also unconfirmed whether timestamps must be internally consistent/ordered,
-  or whether the file's own mtime vs. the JSON `timestamp` fields matter for
-  session listing/sorting (e.g. in the resume picker's ordering).
-  turnbridge should just use real, monotonically increasing timestamps to be
-  safe.
-- **Large/long sessions untested** — all fabricated test files were 2-3
-  lines. Unknown if there's a line-count or byte-size behavior cliff, or
-  whether very long fabricated histories affect context-loading correctly.
-- **`sessionId` mismatch (inline field vs. filename) untested** — all our
-  fabricated files either omitted the inline `sessionId` field or set it
-  identically to the filename UUID. Behavior on mismatch is unknown;
-  recommend always keeping them identical.
-- **Duplicate/collided `uuid` values, or a `parentUuid` pointing to a
-  nonexistent `uuid`, untested** — recommend generating fresh UUIDv4 per
-  line and always chaining correctly (§2) to avoid undefined behavior.
+- **Resume picker title source — RESOLVED, inference was correct** (probe,
+  2026-07-27, claude 2.1.220, `scripts/probe-picker.mjs`, driven through a
+  pty). Two sessions were planted in one project dir: one with an `ai-title`
+  line and a distinctive first user message, one with only the message. The
+  picker rendered the `ai-title` for the first (and *not* its first user
+  message) and the first user message for the second. So `ai-title` wins, with
+  fallback to the first user message exactly as §3 guessed.
+  **Consequence for turnbridge:** fabricated sessions carried no `ai-title`,
+  so every bridged conversation appeared in the picker titled by turnbridge's
+  own import notice — the same string for every bridge, describing the
+  machinery instead of the conversation. `buildSessionLines` now emits an
+  `ai-title` derived from the first human turn. Trailing placement was
+  separately verified safe (`probe-session-invariants.mjs`): the `parentUuid`
+  walk starts at the last line but skips non-conversation line types, so a
+  trailing `ai-title` does not truncate history.
+- **Timestamp *ordering* tolerance — RESOLVED** (probe, 2026-07-27,
+  claude 2.1.220, `scripts/probe-session-invariants.mjs`). Out-of-order lines
+  are tolerated: a file whose first line is stamped *newer* than every line
+  below it resumed with full history intact, as did a backdated-monotonic
+  variant of the same file. Ordering is not load-bearing for resume, so
+  turnbridge keeps its import notice at fabrication time (see
+  `buildSessionLines`) rather than backdating it.
+  **Still unresolved:** whether the resume picker orders sessions by file
+  mtime or by line timestamps. This only matters cosmetically (where a freshly
+  bridged session lands in the list) and needs the interactive TUI to answer.
+- **Timestamp format tolerance still untested** — only millisecond-precision
+  RFC3339 `...Z` strings have been tried and confirmed required-present;
+  second-precision and offset-instead-of-`Z` forms remain unverified.
+  conversation-ledger validates `occurred_at` with `Date.parse` alone, so
+  those forms *can* reach a fabricator; turnbridge therefore normalizes every
+  timestamp it writes to millisecond UTC (`src/timestamps.ts`) rather than
+  relying on tolerance it has not measured.
+- **Large/long sessions — verified clean to 300 turns / ~215 KB** (probe,
+  2026-07-27, claude 2.1.220, `scripts/probe-large-history.mjs`). A fabricated
+  300-turn session resumed in ~5s with markers planted in *both* the first and
+  last turns recalled, so early history is not silently dropped when a long
+  history arrives all at once at session start rather than accumulating turn by
+  turn. No line-count or byte-size cliff was found below that ceiling.
+  **Beyond ~300 turns is deliberately unmeasured**: turnbridge passes history
+  through without truncating, and fitting it is Claude Code's own job (it
+  auto-compacts). The useful claim is a verified-clean range, not the exact
+  cliff. Raise the ceiling with `PROBE_TURNS=N` if that assumption needs
+  retesting.
+- **`sessionId` mismatch (inline field vs. filename) — RESOLVED, tolerated**
+  (probe, 2026-07-27). A file whose every line carried a `sessionId` unrelated
+  to its filename UUID resumed normally with full history: lookup is by
+  filename, and the inline field is not cross-checked. Keeping them identical
+  is still recommended for cosmetic consistency with real sessions, but it is
+  not load-bearing. Enforced by test regardless.
+- **Dangling `parentUuid` — RESOLVED, tolerated** (probe, 2026-07-27). A first
+  line whose `parentUuid` pointed at a UUID present nowhere in the file
+  resumed with full history; the unresolvable ref is simply treated as a root.
+- **Duplicate/collided `uuid` values — RESOLVED, and the one that genuinely
+  breaks** (probe, 2026-07-27). Giving two lines the same `uuid` silently
+  dropped a turn from the replayed history: the resumed model no longer had
+  the marker planted in the colliding line and said so. **`claude --resume`
+  still exited 0 with no warning** — the failure mode is silent history loss,
+  not an error, which is exactly the case a fabricator is least likely to
+  notice. Consistent with §2's backward `parentUuid` walk. Generate a fresh
+  UUIDv4 per line, always; `src/test/fabricate-invariants.test.ts` asserts it.
 - **`--resume` cwd-scoping workaround**: since resume is strictly scoped to
   the launch cwd's encoded project directory (§3), turnbridge must always
   `cd` (or set subprocess cwd) to match before invoking `claude --resume`.

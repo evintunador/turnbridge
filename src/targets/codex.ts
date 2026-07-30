@@ -5,6 +5,8 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import type { EvidenceEvent } from "conversation-ledger";
 import { bootstrapPrompt } from "../bootstrap.js";
+import { normalizeTimestamp } from "../timestamps.js";
+import { formatSize, transcriptSize } from "../transcript.js";
 import { binaryOnPath } from "../launch.js";
 import { cliLabel, turnContent, type ConversationSummary, type TurnBlock } from "../types.js";
 import { FabricationUnsupportedError, type LaunchPlan, type TargetAdapter } from "./types.js";
@@ -97,6 +99,53 @@ function turnLines(timestamp: string, role: "user" | "assistant", text: string):
 }
 
 /**
+ * A foreign tool call as a real `function_call` response_item.
+ *
+ * Verified safe by scripts/probe-codex-function-call.mjs (codex-cli 0.145.0):
+ * a well-formed call/output pair whose `name` is a tool Codex has never heard
+ * of ("Edit") replays without API rejection, and the resumed model can name
+ * the tool it sees. This closes docs/specs/codex-rollout-format.md §8.2, which
+ * had flagged foreign names and orphaned outputs as an unverified rejection
+ * risk and recommended text-folding until measured.
+ *
+ * Pairing is what actually matters: the same probe showed an orphaned
+ * `function_call_output` does not error, but carries no `name` at all, so the
+ * tool's identity is simply lost. Unpaired results stay text-folded, where the
+ * name at least survives as prose.
+ */
+function functionCallLine(timestamp: string, callId: string, name: string, input: unknown): RolloutLine {
+  return {
+    timestamp,
+    type: "response_item",
+    payload: {
+      type: "function_call",
+      id: `fc_tb_${callId.slice(-16)}`,
+      name,
+      // the Responses API carries arguments as a JSON *string*, not an object
+      arguments: JSON.stringify(input ?? {}),
+      call_id: callId,
+    },
+  };
+}
+
+function functionCallOutputLine(timestamp: string, callId: string, output: string): RolloutLine {
+  return {
+    timestamp,
+    type: "response_item",
+    payload: {
+      type: "function_call_output",
+      call_id: callId,
+      output: [{ type: "input_text", text: output }],
+    },
+  };
+}
+
+/** Codex has no generic tool-call `event_msg`, so scrollback gets prose. */
+function toolDisplayLine(timestamp: string, text: string): RolloutLine {
+  return displayLine(timestamp, "assistant", text);
+}
+
+/**
  * `reasoning` events this fabrication should replay verbatim: opaque
  * `encrypted_content` only the originating provider can decrypt, which the
  * ledger preserves losslessly (raw.data holds the exact original
@@ -111,11 +160,13 @@ function eligibleReasoning(summary: ConversationSummary, replayReasoning: boolea
 }
 
 /** The verbatim `{type: "response_item", payload: {type: "reasoning", ...}}` line, if shaped as expected. */
-function reasoningRolloutLine(event: EvidenceEvent): RolloutLine | null {
+function reasoningRolloutLine(event: EvidenceEvent, now: Date): RolloutLine | null {
   const line = event.raw?.data as { type?: unknown; payload?: unknown } | undefined;
   if (line?.type !== "response_item" || !line.payload || typeof line.payload !== "object") return null;
   return {
-    timestamp: event.occurred_at,
+    // Outer rollout field only — `payload` (where the ciphertext lives) stays
+    // byte-identical, since that is what the provider has to be able to decrypt.
+    timestamp: normalizeTimestamp(event.occurred_at, now),
     type: "response_item",
     payload: line.payload as Record<string, unknown>,
   };
@@ -131,16 +182,19 @@ export function buildRolloutLines(
 ): RolloutLine[] {
   const nowIso = now.toISOString();
   const replayCount = eligibleReasoning(summary, replayReasoning).length;
+  // The notice is a factual claim about this specific file, so it has to track
+  // what was actually written: tool calls now replay as real function_call
+  // records (history the model reads, never re-executed), except unpaired
+  // results, which stay prose.
   const noticeText =
-    replayCount > 0
-      ? `[turnbridge import notice] This conversation was imported from ${cliLabel(summary.source)}. ` +
-        `The history below is the literal visible transcript. ${replayCount} encrypted reasoning ` +
-        "block(s) from the original Codex session were also replayed verbatim below, which may restore " +
-        "hidden reasoning provider-side; all other hidden reasoning and provider-private state, and past " +
-        "tool calls, were not transferred and are shown as labeled text, not replayable calls."
-      : `[turnbridge import notice] This conversation was imported from ${cliLabel(summary.source)}. ` +
-        "The history below is the literal visible transcript; hidden reasoning and provider-private " +
-        "state were not transferred, and past tool calls are shown as labeled text, not replayable calls.";
+    `[turnbridge import notice] This conversation was imported from ${cliLabel(summary.source)}. ` +
+    "The history below is the literal visible transcript. Past tool calls are replayed as history " +
+    "records, not as calls to re-run; tool results with no matching call appear as labeled text. " +
+    (replayCount > 0
+      ? `${replayCount} encrypted reasoning block(s) from the original Codex session were replayed ` +
+        "verbatim below, which may restore hidden reasoning provider-side; all other hidden reasoning " +
+        "and provider-private state were not transferred."
+      : "Hidden reasoning and provider-private state were not transferred.");
 
   const lines: RolloutLine[] = [
     {
@@ -162,19 +216,63 @@ export function buildRolloutLines(
     ...turnLines(nowIso, "user", noticeText),
   ];
 
+  // call_ids seen so far, so a tool_result can tell a real pairing from an
+  // orphan whose matching call never made it into this conversation
+  const seenCallIds = new Set<string>();
   for (const event of summary.events) {
     if (event.kind === "reasoning") {
       if (!replayReasoning || event.producer.source !== "codex") continue;
-      const line = reasoningRolloutLine(event);
+      const line = reasoningRolloutLine(event, now);
       if (line) lines.push(line);
       continue;
     }
     const content = turnContent(event);
     if (!content) continue;
-    const text = content.blocks.map(foldBlock).filter((t) => t.trim()).join("\n\n");
-    if (!text) continue;
+    const ts = normalizeTimestamp(event.occurred_at, now);
     const role = event.actor.type === "human" ? "user" : "assistant";
-    lines.push(...turnLines(event.occurred_at, role, text));
+
+    // Prose accumulates until a tool block interrupts it, so a turn's text and
+    // its tool calls stay in their original order rather than being hoisted.
+    let prose: string[] = [];
+    const flushProse = () => {
+      const text = prose.filter((t) => t.trim()).join("\n\n");
+      prose = [];
+      if (text) lines.push(...turnLines(ts, role, text));
+    };
+
+    for (const block of content.blocks) {
+      if (block.type === "tool_use") {
+        const callId =
+          typeof block.id === "string" && block.id ? block.id : `call_tb_${randomUUID().slice(0, 12)}`;
+        const name = typeof block.name === "string" && block.name ? block.name : "ImportedTool";
+        seenCallIds.add(callId);
+        flushProse();
+        lines.push(
+          functionCallLine(ts, callId, name, block.input),
+          toolDisplayLine(ts, `[used tool: ${name}]\ninput: ${JSON.stringify(block.input ?? {})}`),
+        );
+        continue;
+      }
+      if (block.type === "tool_result") {
+        const callId = typeof block.tool_use_id === "string" ? block.tool_use_id : null;
+        const body =
+          typeof block.content === "string" ? block.content : JSON.stringify(block.content ?? "");
+        if (callId && seenCallIds.has(callId)) {
+          flushProse();
+          lines.push(
+            functionCallOutputLine(ts, callId, body),
+            toolDisplayLine(ts, `[tool result]\n${body}`),
+          );
+        } else {
+          // unpaired: an orphaned function_call_output would drop the tool's
+          // identity entirely, so keep it as prose where the label survives
+          prose.push(foldBlock(block));
+        }
+        continue;
+      }
+      prose.push(foldBlock(block));
+    }
+    flushProse();
   }
   return lines;
 }
@@ -220,11 +318,12 @@ export const codexTarget: TargetAdapter = {
     await mkdir(dir, { recursive: true });
     const path = join(dir, `rollout-${stamp}-${sessionId}.jsonl`);
     const lines = buildRolloutLines(summary, sessionId, cwd, version, now, opts.replayReasoning);
-    await writeFile(path, lines.map((l) => JSON.stringify(l)).join("\n") + "\n");
+    const body = lines.map((l) => JSON.stringify(l)).join("\n") + "\n";
+    await writeFile(path, body);
 
     notes.push(
       `fabricated Codex session ${sessionId} from ${cliLabel(summary.source)} history (${summary.turnCount} turns)`,
-      `rollout file: ${path}`,
+      `rollout file: ${path} (${formatSize(transcriptSize(body))})`,
     );
     const replayCount = eligibleReasoning(summary, opts.replayReasoning).length;
     if (replayCount > 0) {
