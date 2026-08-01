@@ -6,9 +6,9 @@ import { parseCliName } from "./types.js";
 const USAGE = `turnbridge — continue a coding-agent conversation in another CLI
 
 Usage:
-  turnbridge resume [claude|codex] [options]   pick a conversation and resume it
-  turnbridge list [options]                    print compatible conversations
-  turnbridge shim install|uninstall|status     opt-in \`claude --resume\` interception
+  turnbridge resume [claude|codex|opencode] [options]   pick a conversation and resume it
+  turnbridge list [options]                            print compatible conversations
+  turnbridge shim install|uninstall|status             opt-in \`claude --resume\` interception
 
 Options for resume/list:
   --all         include collaborators' conversations (default: yours + unattributed)

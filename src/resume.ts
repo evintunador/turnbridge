@@ -77,7 +77,7 @@ async function chooseTarget(flags: ResumeFlags): Promise<TargetAdapter | null> {
 
   const installed = await installedTargets();
   if (installed.length === 0) {
-    process.stderr.write("turnbridge: no supported CLI found on PATH (claude, codex)\n");
+    process.stderr.write("turnbridge: no supported CLI found on PATH (claude, codex, opencode)\n");
     return null;
   }
   if (installed.length === 1) return installed[0]!;

@@ -42,6 +42,22 @@ exec "${realPath}" "$@"
 `;
 }
 
+function opencodeShim(realPath: string): string {
+  return `#!/bin/sh
+${RC_MARKER}
+# Bare \`opencode -s\` or \`opencode --session\` opens the turnbridge merged
+# picker; everything else passes through to the real binary.
+case "$1" in
+  -s|--session)
+    if [ "$#" -eq 2 ]; then
+      exec turnbridge resume opencode
+    fi
+    ;;
+esac
+exec "${realPath}" "$@"
+`;
+}
+
 function rcPath(): string {
   return join(homedir(), ".zshrc");
 }
@@ -62,6 +78,7 @@ export async function shimInstall(): Promise<number> {
   for (const [binary, template] of [
     ["claude", claudeShim],
     ["codex", codexShim],
+    ["opencode", opencodeShim],
   ] as const) {
     const real = resolveRealBinary(binary);
     if (!real) {
