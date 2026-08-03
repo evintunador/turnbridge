@@ -128,19 +128,20 @@ before broadening):
   `file:` dependency for a semver range — `prepublishOnly` refuses to publish
   until this happens. Deliberately deferred while both packages are iterated
   on and dogfooded for a few days.
-- Adapter-drift automation: the daily check
-  (`.github/workflows/adapter-drift.yml`) opens a tracking issue on drift,
-  **closes it when drift clears**, and **opens a mechanical draft PR** that
-  widens the pin and carries the revalidation checklist (added 2026-08-02).
-  That PR is deliberately *unvalidated* — CI cannot run the probes, because
-  they need both target CLIs installed, a TTY for the interactive smoke test,
-  and paid model credentials for each provider to make the recall turns real.
-  So the automation's honest ceiling is "here is the one-line change and the
-  checklist"; a human still runs `npm run smoke:interactive` and the probes
-  locally, then undrafts. An agent-drafted PR (the old stage 2, needing an
-  `ANTHROPIC_API_KEY` secret) would hit exactly the same wall — the API key
-  was never the binding constraint, the provider credentials for the probes
-  are — which is why the mechanical version is preferred over it.
+- Adapter-drift automation stays **reporting-only** (decided 2026-08-02). The
+  daily check (`.github/workflows/adapter-drift.yml`) opens a tracking issue on
+  drift and now closes it when drift clears; it never writes to the repo.
+  Auto-drafting the revalidation PR was built and then reverted. The reasoning
+  is worth keeping, because the idea is tempting enough to recur: CI cannot
+  validate a pin — the probes need both target CLIs installed, a TTY for the
+  interactive smoke test, and paid model credentials per provider to make the
+  recall turns real. So any PR CI opened would be a mechanical one-line bump
+  with nothing behind it, saving a trivial edit while creating a *mergeable*
+  artifact that asserts a validation nobody performed. An issue cannot be
+  merged, and that asymmetry is the point. The agent-drafted variant (the old
+  stage 2, needing an `ANTHROPIC_API_KEY` secret) fails for the same reason —
+  the API key was never the binding constraint; the provider credentials the
+  probes need are, and no amount of agency in CI conjures them.
 - Revalidation tooling exists and is the bar for widening version pins:
   `npm run smoke:interactive` (real-TUI render check, both targets),
   `scripts/probe-codex-content.mjs` (headless model-recall probe),

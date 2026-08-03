@@ -2,16 +2,19 @@
 # version prefixes the fabrication adapters were validated against
 # (docs/specs/ are reverse-engineered and version-pinned by design).
 #
-# On drift: opens/updates a pinned tracking issue AND opens a mechanical draft
-# PR that widens the pin and carries the revalidation checklist.
-# When drift clears: closes the tracking issue.
+# Daily check → open/update a pinned tracking issue on drift, close it when
+# drift clears. Reporting only, deliberately: this workflow never writes to
+# the repo and never opens a PR.
 #
-# The draft PR validates NOTHING, by design. Earning a pin means running the
-# probes, and those need both target CLIs installed, a TTY for the interactive
-# smoke test, and paid model credentials for each provider to make the recall
-# turns real — none of which a runner has. An agent-drafted PR would hit the
-# same wall, so the automation stops at the mechanical edit and a human
-# undrafts after running `npm run smoke:interactive` and the relevant probes.
+# Why not auto-draft the PR (considered and rejected 2026-08-02): CI cannot
+# validate a pin. The probes that earn one need both target CLIs installed, a
+# TTY for the interactive smoke test, and paid model credentials per provider
+# to make the recall turns real. So any PR CI opened would be a mechanical
+# one-line pin bump with nothing behind it — saving a trivial edit while
+# creating a mergeable artifact that asserts a validation nobody performed.
+# An issue cannot be merged; that asymmetry is the whole point. An agent-drafted
+# PR (an earlier idea, needing an ANTHROPIC_API_KEY secret) hits the same wall
+# for the same reason — the key was never the binding constraint.
 name: adapter-drift
 on:
   schedule:
@@ -27,7 +30,6 @@ jobs:
     outputs:
       drift: ${{ steps.drift.outputs.drift }}
       report: ${{ steps.drift.outputs.report }}
-      branch: ${{ steps.drift.outputs.branch }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -63,61 +65,6 @@ jobs:
                 ...context.repo, title, body, labels: ["adapter-drift"],
               });
             }
-
-  # Mechanical pin widening. One branch per drifted version set, so re-running
-  # daily updates nothing rather than opening a PR a day.
-  draft-pr:
-    needs: check
-    if: needs.check.outputs.drift == 'true' && needs.check.outputs.branch != ''
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-      pull-requests: write
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-      - id: existing
-        env:
-          BRANCH: ${{ needs.check.outputs.branch }}
-        run: |
-          if git ls-remote --exit-code --heads origin "$BRANCH" >/dev/null 2>&1; then
-            echo "exists=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "exists=false" >> "$GITHUB_OUTPUT"
-          fi
-      - if: steps.existing.outputs.exists == 'false'
-        run: node scripts/check-adapter-drift.mjs --fix || [ $? -eq 2 ]
-      - id: commit
-        if: steps.existing.outputs.exists == 'false'
-        env:
-          BRANCH: ${{ needs.check.outputs.branch }}
-        run: |
-          if [ -z "$(git status --porcelain)" ]; then
-            echo "changed=false" >> "$GITHUB_OUTPUT"
-            echo "pin is a bare major — widening it is not a one-line change; issue only"
-            exit 0
-          fi
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git checkout -b "$BRANCH"
-          git commit -am "Widen adapter version pin for new CLI release (UNVALIDATED)"
-          git push origin "$BRANCH"
-          echo "changed=true" >> "$GITHUB_OUTPUT"
-      - if: steps.commit.outputs.changed == 'true'
-        env:
-          BRANCH: ${{ needs.check.outputs.branch }}
-          REPORT: ${{ needs.check.outputs.report }}
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          printf '%s\n\n%s\n' \
-            "$REPORT" \
-            "> Opened as a **draft** by the adapter-drift workflow. The pin edit is mechanical; nothing here has been validated. Run the revalidation steps above locally, record the evidence in the spec's revalidation log, then undraft." \
-            > /tmp/pr-body.md
-          gh pr create --draft --base main --head "$BRANCH" \
-            --title "Revalidate adapters for new CLI release (draft, unvalidated)" \
-            --body-file /tmp/pr-body.md
 
   close-issue:
     needs: check
