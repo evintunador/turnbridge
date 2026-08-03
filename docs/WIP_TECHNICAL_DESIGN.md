@@ -128,12 +128,19 @@ before broadening):
   `file:` dependency for a semver range — `prepublishOnly` refuses to publish
   until this happens. Deliberately deferred while both packages are iterated
   on and dogfooded for a few days.
-- Adapter-drift automation stage 2: the daily check
-  (`.github/workflows/adapter-drift.yml`) currently opens a tracking issue on
-  drift; the commented-out follow-on job hands the issue to a Claude Code
-  action that revalidates the spec against the new CLI release and drafts the
-  PR. Needs an `ANTHROPIC_API_KEY` repo secret and comfort with CI pushing
-  branches.
+- Adapter-drift automation: the daily check
+  (`.github/workflows/adapter-drift.yml`) opens a tracking issue on drift,
+  **closes it when drift clears**, and **opens a mechanical draft PR** that
+  widens the pin and carries the revalidation checklist (added 2026-08-02).
+  That PR is deliberately *unvalidated* — CI cannot run the probes, because
+  they need both target CLIs installed, a TTY for the interactive smoke test,
+  and paid model credentials for each provider to make the recall turns real.
+  So the automation's honest ceiling is "here is the one-line change and the
+  checklist"; a human still runs `npm run smoke:interactive` and the probes
+  locally, then undrafts. An agent-drafted PR (the old stage 2, needing an
+  `ANTHROPIC_API_KEY` secret) would hit exactly the same wall — the API key
+  was never the binding constraint, the provider credentials for the probes
+  are — which is why the mechanical version is preferred over it.
 - Revalidation tooling exists and is the bar for widening version pins:
   `npm run smoke:interactive` (real-TUI render check, both targets),
   `scripts/probe-codex-content.mjs` (headless model-recall probe),
