@@ -6,7 +6,9 @@ fabricated prior conversation visible to the model.
 
 Pinned environment:
 - `codex --version` → **codex-cli 0.144.6** (some session files on disk were written by 0.144.5;
-  format is stable across that point release).
+  format is stable across that point release). **Revalidated against 0.145.0 (2026-07-21/27) and
+  0.146.0 (2026-08-02) with no format change — see §10 for the 0.146.0 evidence.** The adapter's
+  `VALIDATED_VERSION_PREFIXES` accepts `0.144.x`, `0.145.x`, `0.146.x`.
 - Tested on macOS (darwin), zsh shell, `$CODEX_HOME` = `~/.codex` (default).
 
 Everything in this document was verified empirically against this exact build on 2026-07-18/19,
@@ -438,3 +440,35 @@ keyed on role. It diverges from our verified-safe approach in two ways worth fla
    secrets found nothing).
 
 No real session files were read destructively, modified, or deleted at any point.
+
+---
+
+## 10. Revalidation log — codex-cli 0.146.0 (2026-08-02)
+
+Triggered by the adapter-drift workflow (issue #2): 0.146.0 released outside the validated
+prefixes. Every claim below was re-measured against a live 0.146.0 install, not assumed.
+
+**Structural diff against a real 0.146.0-authored session.** Ran `codex exec --json` in a scratch
+git repo and inspected the resulting rollout file:
+
+| property | 0.144.6 spec says | 0.146.0 observed |
+|---|---|---|
+| top-level line shape | `{timestamp, type, payload}` | unchanged |
+| record types | `session_meta`, `event_msg`, `response_item`, `turn_context`, `world_state` | unchanged (`compacted` not exercised at this size) |
+| `session_meta` payload | §4.1 union | unchanged; `cli_version: "0.146.0"`, `history_mode: "legacy"`, `context_window.window_id` present. `git` carried `commit_hash`/`branch` but no `repository_url` — consistent with §4.1, the scratch repo simply had no remote |
+| message content blocks | `input_text` (developer/user), `output_text` (assistant) | unchanged; assistant still carries `phase` |
+| filename / directory | `rollout-<local-ts>-<uuid>.jsonl` under local-date dirs | unchanged — file landed in `2026/08/02/` while its in-file timestamp read `2026-08-03T03:02Z`, re-confirming §2's local-date rule |
+
+**Functional probes.** All four pass with results identical to 0.145.0:
+
+| probe | result |
+|---|---|
+| `probe-codex-content.mjs` (fabricate → `codex exec resume` → recall) | PASS — marker recalled |
+| `probe-codex-function-call.mjs` (all 3 variants + e2e) | text-folded USABLE, paired-foreign USABLE (tool named, no rejection), orphan-output USABLE but tool identity lost — §5.1 holds exactly |
+| `probe-large-history.mjs codex` | CLEAN — 300 turns / 217 KB, resumed in 4.8s, both first- and last-turn markers recalled (same figures as 0.145.0) |
+| `npm run smoke:interactive` | PASS — both markers rendered in the real TUI (Claude Code target also re-checked, still clean on 2.1.220) |
+
+Nothing in §§1–9 required amendment. The unmeasured items stay unmeasured for the same reasons
+as before: `custom_tool_call` fabrication, histories beyond ~300 turns, and blob TTL for
+encrypted-reasoning replay (§8.6 / the roadmap's reasoning-replay entry) — none of which this
+release touched.

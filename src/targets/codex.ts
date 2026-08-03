@@ -12,14 +12,16 @@ import { cliLabel, turnContent, type ConversationSummary, type TurnBlock } from 
 import { FabricationUnsupportedError, type LaunchPlan, type TargetAdapter } from "./types.js";
 
 /**
- * Rollout writer validated against codex-cli 0.144.x and 0.145.x (2026-07):
- * resume-by-id scans ~/.codex/sessions for a rollout file whose name and
- * session_meta id match; plain `message` response_items are the replayed
- * conversation state. 0.145.0 revalidated 2026-07-21 via the interactive
- * smoke test plus a headless `codex exec resume` marker-recall probe
- * (scripts/probe-codex-content.mjs).
+ * Rollout writer validated against codex-cli 0.144.x, 0.145.x and 0.146.x
+ * (2026-07/08): resume-by-id scans ~/.codex/sessions for a rollout file whose
+ * name and session_meta id match; plain `message` response_items are the
+ * replayed conversation state. 0.145.0 revalidated 2026-07-21 via the
+ * interactive smoke test plus a headless `codex exec resume` marker-recall
+ * probe (scripts/probe-codex-content.mjs). 0.146.0 revalidated 2026-08-02 by
+ * the same two plus structured tool replay (probe-codex-function-call.mjs)
+ * and the 300-turn history probe — see docs/specs/codex-rollout-format.md §10.
  */
-const VALIDATED_VERSION_PREFIXES = ["0.144.", "0.145."];
+const VALIDATED_VERSION_PREFIXES = ["0.144.", "0.145.", "0.146."];
 
 function codexVersion(): string | null {
   const result = spawnSync("codex", ["--version"], { encoding: "utf8" });
