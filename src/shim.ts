@@ -42,21 +42,17 @@ exec "${realPath}" "$@"
 `;
 }
 
-function opencodeShim(realPath: string): string {
-  return `#!/bin/sh
-${RC_MARKER}
-# Bare \`opencode -s\` or \`opencode --session\` opens the turnbridge merged
-# picker; everything else passes through to the real binary.
-case "$1" in
-  -s|--session)
-    if [ "$#" -eq 2 ]; then
-      exec turnbridge resume opencode
-    fi
-    ;;
-esac
-exec "${realPath}" "$@"
-`;
-}
+/**
+ * There is deliberately no opencode shim.
+ *
+ * A shim can only interpose on a gesture that means "show me my sessions"
+ * with no argument — `claude --resume` and `codex resume` both are. opencode
+ * has no such invocation: `-s`/`--session` always takes an id (intercepting it
+ * would discard the id the user typed, and re-launching through the shim would
+ * recurse), `-c`/`--continue` names a specific session (the last one), and bare
+ * `opencode` starts a new session. Users reach the merged picker by running
+ * `turnbridge resume opencode` directly.
+ */
 
 function rcPath(): string {
   return join(homedir(), ".zshrc");
@@ -78,7 +74,6 @@ export async function shimInstall(): Promise<number> {
   for (const [binary, template] of [
     ["claude", claudeShim],
     ["codex", codexShim],
-    ["opencode", opencodeShim],
   ] as const) {
     const real = resolveRealBinary(binary);
     if (!real) {

@@ -1,7 +1,8 @@
 # WIP technical design
 
-**Status:** MVP implemented for Claude Code ⇄ Codex; fabrication adapters are
-version-pinned and must be revalidated per CLI release.
+**Status:** MVP implemented for Claude Code ⇄ Codex, plus opencode as a
+fabrication target; fabrication adapters are version-pinned and must be
+revalidated per CLI release.
 
 ## Main flow
 
@@ -9,7 +10,7 @@ version-pinned and must be revalidated per CLI release.
    local transcript incrementally into git notes as normalized
    `conversation_turn` events, stamped with the repo's git identity
    (`actor.id` = `user.email`) on human turns.
-2. `turnbridge resume [claude|codex]` lists conversations compatible with the
+2. `turnbridge resume [claude|codex|opencode]` lists conversations compatible with the
    current repository state: events anchored to commits reachable from `HEAD`
    (`--any-commit` lifts this), authored by you or unattributed
    (`--all` includes collaborators).
@@ -32,6 +33,9 @@ version-pinned and must be revalidated per CLI release.
   the rehydration prompt; reports estimated token size before launch.
 - `src/shim.ts` — opt-in PATH shims: bare `claude --resume` / `codex resume`
   open the merged picker; everything else passes through to the real binary.
+  No opencode shim: it has no argument-free "show me my sessions" invocation to
+  interpose on (`-s` always takes an id), and intercepting one that takes an
+  argument would both discard the id and recurse through the shim.
 
 ## Division of labor with Conversation Ledger
 
@@ -87,14 +91,27 @@ evidence, so turnbridge does not need to alter capture to avoid double-count.
   recognized-but-false id.
 
 Reverse-engineered, empirically verified format specs (pinned versions,
-minimal working schemas, unknowns): [docs/specs/claude-session-format.md](specs/claude-session-format.md)
-and [docs/specs/codex-rollout-format.md](specs/codex-rollout-format.md).
+minimal working schemas, unknowns): [docs/specs/claude-session-format.md](specs/claude-session-format.md),
+[docs/specs/codex-rollout-format.md](specs/codex-rollout-format.md), and
+[docs/specs/opencode-session-format.md](specs/opencode-session-format.md).
 Key constraints: Claude resume is scoped to the project dir encoded from the
 launch cwd and reconstructs history by walking `parentUuid` from the last
 line; Codex resume-by-id scans `~/.codex/sessions` for a matching filename +
 `session_meta` id, and only plain `message` response_items are verified-safe
 to replay (foreign tool calls fold into labeled text). Claude accepts foreign
 `tool_use` names verbatim, so Codex→Claude keeps structured tool history.
+
+opencode is the first target that breaks the "write a new session file"
+assumption: every session lives in one shared SQLite DB, so fabrication builds
+a payload in opencode's own export format and shells out to `opencode import`.
+Three consequences the file-based targets don't have. Import is **not atomic**
+— a payload rejected part-way leaves a truncated session behind, so a failed
+import deletes it before falling back to bootstrap. Message order comes from
+`time.created` rather than payload position, so the import notice is backdated
+ahead of history instead of stamped `now` (stamped `now`, it sorted last and
+rendered as a `QUEUED` prompt). And `info.projectID` — an opaque id looked up
+via `opencode debug scrap`, not derivable from the path — is what scopes a
+session to a repo; the `global` fallback lists it from every directory.
 
 ## Sharing model
 
@@ -134,8 +151,17 @@ before broadening):
   action that revalidates the spec against the new CLI release and drafts the
   PR. Needs an `ANTHROPIC_API_KEY` repo secret and comfort with CI pushing
   branches.
+- **opencode is a target, not yet a source** *(added 2026-08-02, opencode
+  1.18.5)*. Fabricating *into* opencode works and is spec'd; capturing *out* of
+  it needs conversation-ledger's opencode adapter (SQLite + the plugin API
+  rather than shell hooks), which lives in that package. Until it ships, a
+  conversation bridged into opencode is not captured there, so it cannot be
+  bridged onward and its `continuation` lineage edge names a conversation the
+  picker never shows. Remaining opencode gaps: no headless model-recall probe
+  (the Codex analogue is `probe-codex-content.mjs`), and long histories
+  unmeasured — see the spec's "Unknowns".
 - Revalidation tooling exists and is the bar for widening version pins:
-  `npm run smoke:interactive` (real-TUI render check, both targets),
+  `npm run smoke:interactive` (real-TUI render check, all three targets),
   `scripts/probe-codex-content.mjs` (headless model-recall probe),
   `probe-session-invariants.mjs` (malformed-session tolerance),
   `probe-large-history.mjs` (long histories, `PROBE_TURNS=N`),

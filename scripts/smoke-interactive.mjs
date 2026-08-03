@@ -8,7 +8,7 @@
  * This covers what the headless verification (`claude -p`, `codex exec`)
  * cannot: the TUI render path users actually see. See docs/specs/* "Unknowns".
  *
- * Usage: node scripts/smoke-interactive.mjs [claude-code|codex|all] [--manual]
+ * Usage: node scripts/smoke-interactive.mjs [claude-code|codex|opencode|all] [--manual]
  * Env:   SMOKE_KEEP=1 keeps the temp repo and fabricated session files.
  * Artifacts (raw + ANSI-stripped pty captures) land in a temp dir printed at
  * the end — review the stripped capture for visual glitches by eye too.
@@ -163,6 +163,18 @@ async function smokeTarget(name, repo, conversationId, artifactsDir) {
   });
   await writeFile(join(artifactsDir, `${name}.stripped.txt`), stripped);
 
+  // opencode fabrication imports into one shared SQLite DB rather than writing
+  // a throwaway session file, so a smoke run leaves a row in the user's real
+  // session list unless it cleans up after itself.
+  if (name === "opencode" && !KEEP) {
+    const sessionId = plan.args[plan.args.indexOf("-s") + 1];
+    await new Promise((resolve) => {
+      const child = spawn("opencode", ["session", "delete", sessionId], { stdio: "ignore" });
+      child.on("close", resolve);
+      child.on("error", resolve);
+    });
+  }
+
   // Success: both planted markers visible in the rendered scrollback.
   const satisfied = stripped.includes(USER_MARKER) && stripped.includes(ASSISTANT_MARKER);
   const glitches = [];
@@ -186,7 +198,7 @@ async function smokeTarget(name, repo, conversationId, artifactsDir) {
 const argv = process.argv.slice(2);
 const manual = argv.includes("--manual");
 const pick = argv.find((a) => !a.startsWith("--")) ?? "all";
-const names = pick === "all" ? ["claude-code", "codex"] : [pick];
+const names = pick === "all" ? ["claude-code", "codex", "opencode"] : [pick];
 const artifactsDir = await mkdtemp(join(tmpdir(), "turnbridge-smoke-artifacts-"));
 await mkdir(artifactsDir, { recursive: true });
 const { repo, conversationId } = await makeSeededRepo(artifactsDir);

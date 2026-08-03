@@ -22,6 +22,7 @@ cledger install all
 turnbridge resume            # interactive: choose conversation, then target CLI
 turnbridge resume codex      # resume straight into Codex
 turnbridge resume claude     # resume straight into Claude Code
+turnbridge resume opencode   # resume straight into opencode
 turnbridge list              # print compatible conversations
 
 # options
@@ -38,6 +39,15 @@ Same-CLI selections use the CLI's native resume. Cross-CLI selections write a
 target-native session file and hand off to the target's own resume; when that
 is unsupported for the installed CLI version, turnbridge falls back to a fresh
 session bootstrapped with the literal transcript.
+
+opencode is currently a **target only**: turnbridge can bridge a Claude Code or
+Codex conversation *into* it, but capturing conversations *out* of opencode
+needs conversation-ledger's opencode adapter, which is a separate package. Its
+sessions also live in one shared SQLite DB rather than per-session files, so
+fabrication goes through `opencode import` — the only affordance that matters
+in practice is that a bridged session is filed under the current directory's
+opencode project, and `turnbridge shim install` writes no opencode shim
+(opencode has no bare "open my sessions" command to intercept).
 
 ## Encrypted reasoning replay
 
