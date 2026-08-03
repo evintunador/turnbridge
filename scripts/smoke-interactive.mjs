@@ -28,6 +28,7 @@ import { listConversations, targetFor } from "../dist/index.js";
 const RUN_ID = Math.random().toString(36).slice(2, 8);
 const USER_MARKER = `TB-SMOKE-USER-${RUN_ID}`;
 const ASSISTANT_MARKER = `TB-SMOKE-ASSISTANT-${RUN_ID}`;
+const TOOL_MARKER = `TB-SMOKE-TOOLOUT-${RUN_ID}`;
 const KEEP = process.env.SMOKE_KEEP === "1";
 
 const stripAnsi = (s) =>
@@ -95,6 +96,28 @@ async function makeSeededRepo(artifactsDir) {
       {
         type: "text",
         text: "Multi-line reply:\n1. numbered item\n2. another item\n\nAnd a closing paragraph.",
+      },
+    ]),
+    // A paired foreign tool call. Every target represents this differently —
+    // Claude keeps the tool_use verbatim, Codex writes function_call records,
+    // opencode folds call and output into one `tool` part whose `state` must
+    // carry six specific keys — and none of it was covered here before, which
+    // is how the opencode adapter shipped unable to import any conversation
+    // containing a tool call.
+    turn("assistant", null, 4, [
+      { type: "text", text: "Reading the file now." },
+      {
+        type: "tool_use",
+        id: "toolu_smoke01",
+        name: "Read",
+        input: { file_path: "/tmp/turnbridge-smoke.txt" },
+      },
+    ]),
+    turn("user", null, 5, [
+      {
+        type: "tool_result",
+        tool_use_id: "toolu_smoke01",
+        content: `${TOOL_MARKER}: the recorded output of that call`,
       },
     ]),
   ]);
@@ -227,14 +250,36 @@ if (manual) {
   }
   out.push(
     "What to check on screen:",
-    `  1. The import notice renders as the first message.`,
-    `  2. All four turns are visible in the scrollback — user marker "${USER_MARKER}",`,
-    `     assistant marker "${ASSISTANT_MARKER}", the bullets/code-fence turn, and the`,
-    `     "[visible thinking]" + numbered-list turn. (Past bug: model saw the context`,
+    `  1. The import notice renders as the first message. (opencode orders by`,
+    `     timestamp, not payload position: stamped wrong it sorts last and shows`,
+    `     a QUEUED badge, as if it were a prompt about to be sent.)`,
+    `  2. All six turns are visible in the scrollback — user marker "${USER_MARKER}",`,
+    `     assistant marker "${ASSISTANT_MARKER}", the bullets/code-fence turn, the`,
+    `     thinking turn (labeled "[visible thinking]" text on claude-code/codex, a`,
+    `     collapsed "Thought" part on opencode), and the Read tool call plus its`,
+    `     output "${TOOL_MARKER}". (Past bug: model saw the context`,
     `     but the TUI scrollback rendered empty.)`,
     "  3. No mangled spacing/wrapping, stray JSON, or escape-code artifacts.",
     "  4. Quit without sending a prompt (Ctrl+C twice) — or send one to verify recall.",
     "",
+    ...(names.includes("opencode")
+      ? [
+          "opencode only:",
+          "  - The Read call renders as a ⚙ row. Expand it (opencode collapses tool",
+          `    rows, so the output is not visible by default): it must carry the real`,
+          `    recorded output "${TOOL_MARKER}", not a`,
+          '    "not captured" placeholder — and that output must appear only there,',
+          "    not also as loose text beside the call.",
+          "  - A one-time `Model turnbridge/<model> is not valid` toast is EXPECTED: the",
+          "    source model id is propagated verbatim rather than replaced with a",
+          "    recognized-but-false one, so opencode warns once and the composer falls",
+          "    back to your configured model.",
+          "  - Fabrication writes into opencode's shared SQLite DB, so --manual leaves a",
+          "    real session behind. Clean up with:",
+          "        opencode session delete <the ses_tb_… id printed above>",
+          "",
+        ]
+      : []),
     `Repo and sessions are kept. Temp repo: ${repo.root}`,
     "",
   );
