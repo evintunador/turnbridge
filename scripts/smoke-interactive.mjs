@@ -21,7 +21,7 @@
 import { spawn } from "node:child_process";
 import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { appendEvents, findRepo, git } from "conversation-ledger";
 import { listConversations, targetFor } from "../dist/index.js";
 
@@ -162,6 +162,34 @@ const GLITCH_PATTERNS = [
   [/panicked|stack backtrace|Traceback/i, "target CLI crashed"],
 ];
 
+/**
+ * Undo what a fabrication wrote into real session storage.
+ *
+ * The adapters deliberately keep their artifacts (a fabricated session is a
+ * real session, and its path is printed for debugging), so the harness — not
+ * the adapter — is what has to sweep. Paths come from the plan notes rather
+ * than being recomputed here, so this cannot drift from where the adapter
+ * actually wrote.
+ */
+async function removeFabricated(name, plan) {
+  if (name === "opencode") {
+    // no throwaway file: the session is a row in one shared SQLite DB
+    const sessionId = plan.args[plan.args.indexOf("-s") + 1];
+    await new Promise((resolve) => {
+      const child = spawn("opencode", ["session", "delete", sessionId], { stdio: "ignore" });
+      child.on("close", resolve);
+      child.on("error", resolve);
+    });
+  }
+  const path = plan.notes.join("\n").match(/(?:session|rollout|import) file: (.+?) \(/)?.[1];
+  if (!path) return;
+  await rm(path, { force: true });
+  // Claude Code files live in a per-cwd project dir that this run created for a
+  // temp repo; drop it once empty, but never a dir that has other sessions in it.
+  const dir = dirname(path);
+  if (/turnbridge-smoke/.test(dir)) await rm(dir, { recursive: true, force: true });
+}
+
 async function smokeTarget(name, repo, conversationId, artifactsDir) {
   const target = targetFor(name);
   if (!(await target.isInstalled())) {
@@ -186,17 +214,12 @@ async function smokeTarget(name, repo, conversationId, artifactsDir) {
   });
   await writeFile(join(artifactsDir, `${name}.stripped.txt`), stripped);
 
-  // opencode fabrication imports into one shared SQLite DB rather than writing
-  // a throwaway session file, so a smoke run leaves a row in the user's real
-  // session list unless it cleans up after itself.
-  if (name === "opencode" && !KEEP) {
-    const sessionId = plan.args[plan.args.indexOf("-s") + 1];
-    await new Promise((resolve) => {
-      const child = spawn("opencode", ["session", "delete", sessionId], { stdio: "ignore" });
-      child.on("close", resolve);
-      child.on("error", resolve);
-    });
-  }
+  // Fabrication writes into the *user's real* session storage — that is the
+  // point of the test — so every run leaves an artifact behind unless it
+  // cleans up. Left unswept these accumulate in the picker the harness exists
+  // to protect: dozens of dead sessions pointing at temp repos that were
+  // deleted the moment the run ended.
+  if (!KEEP) await removeFabricated(name, plan);
 
   // Success: both planted markers visible in the rendered scrollback.
   const satisfied = stripped.includes(USER_MARKER) && stripped.includes(ASSISTANT_MARKER);
