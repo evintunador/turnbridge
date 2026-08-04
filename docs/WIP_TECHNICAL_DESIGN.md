@@ -1,15 +1,17 @@
 # WIP technical design
 
-**Status:** MVP implemented for Claude Code ⇄ Codex, plus opencode as a
-fabrication target; fabrication adapters are version-pinned and must be
-revalidated per CLI release.
+**Status:** MVP implemented for Claude Code ⇄ Codex ⇄ opencode; fabrication
+adapters are version-pinned and must be revalidated per CLI release.
 
 ## Main flow
 
 1. Conversation Ledger's hooks (`cledger install all`) capture each CLI's
    local transcript incrementally into git notes as normalized
    `conversation_turn` events, stamped with the repo's git identity
-   (`actor.id` = `user.email`) on human turns.
+   (`actor.id` = `user.email`) on human turns. opencode has no transcript file
+   to tail — cledger captures it through a `session.idle` plugin that converts
+   `opencode export`, one event per *part*, since its store is mutable
+   (cledger 0.18.0+).
 2. `turnbridge resume [claude|codex|opencode]` lists conversations compatible with the
    current repository state: events anchored to commits reachable from `HEAD`
    (`--any-commit` lifts this), authored by you or unattributed
@@ -151,14 +153,18 @@ before broadening):
   action that revalidates the spec against the new CLI release and drafts the
   PR. Needs an `ANTHROPIC_API_KEY` repo secret and comfort with CI pushing
   branches.
-- **opencode is a target, not yet a source** *(added 2026-08-02, opencode
-  1.18.5)*. Fabricating *into* opencode works and is spec'd; capturing *out* of
-  it needs conversation-ledger's opencode adapter (SQLite + the plugin API
-  rather than shell hooks), which lives in that package. Until it ships, a
-  conversation bridged into opencode is not captured there, so it cannot be
-  bridged onward and its `continuation` lineage edge names a conversation the
-  picker never shows. Remaining opencode gaps: no headless model-recall probe
-  (the Codex analogue is `probe-codex-content.mjs`), and long histories
+- **opencode is a full member** *(target added 2026-08-02, opencode 1.18.5;
+  capture landed in conversation-ledger 0.18.0 and verified here 2026-08-03)*.
+  Both directions are exercised: a Claude Code conversation bridged into
+  opencode is captured back by cledger's `session.idle` plugin, and bridging
+  that opencode conversation onward into Codex and Claude Code preserves the
+  tool call as a structured `function_call`/`function_call_output` pair and as
+  `tool_use`/`tool_result` respectively, with the source model id intact.
+  Note the asymmetry cledger's README calls out: opencode `reasoning` parts are
+  plaintext, so they arrive as ordinary visible `thinking` blocks rather than
+  as Codex-style opaque ciphertext — nothing here replays provider-private
+  state for this target. Remaining opencode gaps: no headless model-recall
+  probe (the Codex analogue is `probe-codex-content.mjs`), and long histories
   unmeasured — see the spec's "Unknowns".
 - Revalidation tooling exists and is the bar for widening version pins:
   `npm run smoke:interactive` (real-TUI render check, all three targets),

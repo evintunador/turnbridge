@@ -207,5 +207,11 @@ model, which is accurate: the bridge did change models. History renders in full 
   resolve the project from `info.directory`, the lookup could be dropped.
 - Long histories (hundreds of turns) were not measured for this target;
   `scripts/probe-large-history.mjs` covers only the file-based targets.
-- Capture (the other direction) is not part of this spec: it needs conversation-ledger's
-  opencode adapter, which is a separate package.
+- Capture (the other direction) is not part of this spec — it lives in conversation-ledger's
+  opencode adapter (0.18.0+), which reads `opencode export` rather than the DB. Verified
+  2026-08-03 that the two compose: a session fabricated by this adapter is captured back with
+  its `thinking`, `tool_use`, and `tool_result` blocks and its propagated model id intact, and
+  re-bridges into Codex and Claude Code with the tool call still structured. Note that
+  fabrication writes `state.output` for a tool call while capture skips *unsettled* (`running`)
+  tool calls — a bridged session therefore only ever carries completed ones, which is why the
+  round trip is lossless here and might not be for a session captured mid-tool-call.

@@ -3,7 +3,7 @@
 Lossless visible-conversation continuity between coding agent CLIs.
 
 [Conversation Ledger](https://github.com/evintunador/conversation-ledger)
-captures native local transcripts (Claude Code, Codex) incrementally into git
+captures native local transcripts (Claude Code, Codex, opencode) incrementally into git
 notes. Turnbridge is the resume layer on top: one picker across CLIs, honest
 session typing, and rehydration of a conversation into a *different* CLI —
 without claiming to transfer hidden reasoning or provider-private state, except
@@ -40,14 +40,15 @@ target-native session file and hand off to the target's own resume; when that
 is unsupported for the installed CLI version, turnbridge falls back to a fresh
 session bootstrapped with the literal transcript.
 
-opencode is currently a **target only**: turnbridge can bridge a Claude Code or
-Codex conversation *into* it, but capturing conversations *out* of opencode
-needs conversation-ledger's opencode adapter, which is a separate package. Its
-sessions also live in one shared SQLite DB rather than per-session files, so
-fabrication goes through `opencode import` — the only affordance that matters
-in practice is that a bridged session is filed under the current directory's
-opencode project, and `turnbridge shim install` writes no opencode shim
-(opencode has no bare "open my sessions" command to intercept).
+opencode works in both directions as of conversation-ledger 0.18.0, which
+captures it via a `session.idle` plugin rather than a shell hook. Two things
+differ from the other CLIs in practice. Its sessions live in one shared SQLite
+DB rather than per-session files, so fabrication goes through `opencode
+import`, and a bridged session is filed under the current directory's opencode
+project (turnbridge looks that up; if the directory isn't a registered opencode
+project the session lands in the `global` one and is listed everywhere). And
+`turnbridge shim install` writes no opencode shim — opencode has no bare
+"open my sessions" command to intercept, since `-s` always takes an id.
 
 ## Encrypted reasoning replay
 
