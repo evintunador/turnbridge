@@ -185,14 +185,20 @@ model, which is accurate: the bridge did change models. History renders in full 
 6. Backdated notice → renders first, `QUEUED` badge gone (pty capture).
 7. Tool-bearing payload with all six `state` keys → imports, renders
    `⚙ Read [file_path=/tmp/x]`, assistant text and markers intact.
+8. Human TUI inspection (2026-08-03, `scripts/smoke-interactive.mjs opencode --manual`,
+   run in a normal terminal): render reported visually correct. This is the check a pty
+   capture cannot make — see the note in that script about the Codex empty-scrollback bug,
+   which a passing automated capture would not have caught.
 
 ## 8. Unknowns / risks
 
 - **Live continuation is unverified.** Sending a new prompt into a resumed fabricated session
   (`opencode run -s <id> …`) could not be completed: the test machine's configured provider
   errored on a *native* session too (`metal resumed prefill failed`), so the failure was not
-  attributable to fabrication. What is verified is that the history is present and renders. The
-  equivalent probe for Codex (`scripts/probe-codex-content.mjs`) has no opencode analogue yet.
+  attributable to fabrication. What is verified is that the history is present and renders
+  correctly (§7.8) — not that the model, once answering, reads it. The equivalent probe for
+  Codex (`scripts/probe-codex-content.mjs`) has no opencode analogue yet; writing one is the
+  cheapest way to close this, since it needs no TUI.
 - Whether the `Model … is not valid` toast has any effect beyond the composer fallback (e.g. on
   `--fork`, or on tool permissioning) was not probed.
 - `opencode debug scrap` is a debug command; its output shape is not a stability promise. The

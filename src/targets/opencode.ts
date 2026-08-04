@@ -43,8 +43,8 @@ import {
  */
 
 /**
- * Validated against opencode 1.18.5 (2026-08-02) — see
- * docs/specs/opencode-session-format.md. The import validator rejects
+ * Validated against opencode 1.18.5 (2026-08-02; TUI render human-confirmed
+ * 2026-08-03) — see docs/specs/opencode-session-format.md. The import validator rejects
  * unknown-shaped records outright, so this pin is a minor, not a major:
  * `state` on a tool part requires all six of status/input/output/title/
  * metadata/time, and that requirement was discovered by import failing.
