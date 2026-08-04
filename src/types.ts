@@ -1,21 +1,23 @@
 import type { EvidenceEvent } from "conversation-ledger";
 
 /** Canonical names for supported CLIs, matching cledger's `producer.source`. */
-export type CliName = "claude-code" | "codex";
+export type CliName = "claude-code" | "codex" | "opencode";
 
-export const SUPPORTED_CLIS: CliName[] = ["claude-code", "codex"];
+export const SUPPORTED_CLIS: CliName[] = ["claude-code", "codex", "opencode"];
 
-/** Normalize user-typed CLI names (`claude`, `claude-code`, `codex`). */
+/** Normalize user-typed CLI names (`claude`, `claude-code`, `codex`, `opencode`). */
 export function parseCliName(input: string): CliName | null {
   const s = input.trim().toLowerCase();
   if (s === "claude" || s === "claude-code" || s === "claude_code") return "claude-code";
   if (s === "codex") return "codex";
+  if (s === "opencode" || s === "open_code") return "opencode";
   return null;
 }
 
 export function cliLabel(name: string): string {
   if (name === "claude-code") return "Claude Code";
   if (name === "codex") return "Codex";
+  if (name === "opencode") return "OpenCode";
   return name;
 }
 
