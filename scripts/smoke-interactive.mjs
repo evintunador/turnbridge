@@ -8,7 +8,7 @@
  * This covers what the headless verification (`claude -p`, `codex exec`)
  * cannot: the TUI render path users actually see. See docs/specs/* "Unknowns".
  *
- * Usage: node scripts/smoke-interactive.mjs [claude-code|codex|all] [--manual]
+ * Usage: node scripts/smoke-interactive.mjs [claude-code|codex|opencode|all] [--manual]
  * Env:   SMOKE_KEEP=1 keeps the temp repo and fabricated session files.
  * Artifacts (raw + ANSI-stripped pty captures) land in a temp dir printed at
  * the end — review the stripped capture for visual glitches by eye too.
@@ -21,13 +21,14 @@
 import { spawn } from "node:child_process";
 import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { appendEvents, findRepo, git } from "conversation-ledger";
 import { listConversations, targetFor } from "../dist/index.js";
 
 const RUN_ID = Math.random().toString(36).slice(2, 8);
 const USER_MARKER = `TB-SMOKE-USER-${RUN_ID}`;
 const ASSISTANT_MARKER = `TB-SMOKE-ASSISTANT-${RUN_ID}`;
+const TOOL_MARKER = `TB-SMOKE-TOOLOUT-${RUN_ID}`;
 const KEEP = process.env.SMOKE_KEEP === "1";
 
 const stripAnsi = (s) =>
@@ -97,6 +98,28 @@ async function makeSeededRepo(artifactsDir) {
         text: "Multi-line reply:\n1. numbered item\n2. another item\n\nAnd a closing paragraph.",
       },
     ]),
+    // A paired foreign tool call. Every target represents this differently —
+    // Claude keeps the tool_use verbatim, Codex writes function_call records,
+    // opencode folds call and output into one `tool` part whose `state` must
+    // carry six specific keys — and none of it was covered here before, which
+    // is how the opencode adapter shipped unable to import any conversation
+    // containing a tool call.
+    turn("assistant", null, 4, [
+      { type: "text", text: "Reading the file now." },
+      {
+        type: "tool_use",
+        id: "toolu_smoke01",
+        name: "Read",
+        input: { file_path: "/tmp/turnbridge-smoke.txt" },
+      },
+    ]),
+    turn("user", null, 5, [
+      {
+        type: "tool_result",
+        tool_use_id: "toolu_smoke01",
+        content: `${TOOL_MARKER}: the recorded output of that call`,
+      },
+    ]),
   ]);
   await writeFile(join(artifactsDir, "repo-path.txt"), dir + "\n");
   return { repo, conversationId };
@@ -139,6 +162,34 @@ const GLITCH_PATTERNS = [
   [/panicked|stack backtrace|Traceback/i, "target CLI crashed"],
 ];
 
+/**
+ * Undo what a fabrication wrote into real session storage.
+ *
+ * The adapters deliberately keep their artifacts (a fabricated session is a
+ * real session, and its path is printed for debugging), so the harness — not
+ * the adapter — is what has to sweep. Paths come from the plan notes rather
+ * than being recomputed here, so this cannot drift from where the adapter
+ * actually wrote.
+ */
+async function removeFabricated(name, plan) {
+  if (name === "opencode") {
+    // no throwaway file: the session is a row in one shared SQLite DB
+    const sessionId = plan.args[plan.args.indexOf("-s") + 1];
+    await new Promise((resolve) => {
+      const child = spawn("opencode", ["session", "delete", sessionId], { stdio: "ignore" });
+      child.on("close", resolve);
+      child.on("error", resolve);
+    });
+  }
+  const path = plan.notes.join("\n").match(/(?:session|rollout|import) file: (.+?) \(/)?.[1];
+  if (!path) return;
+  await rm(path, { force: true });
+  // Claude Code files live in a per-cwd project dir that this run created for a
+  // temp repo; drop it once empty, but never a dir that has other sessions in it.
+  const dir = dirname(path);
+  if (/turnbridge-smoke/.test(dir)) await rm(dir, { recursive: true, force: true });
+}
+
 async function smokeTarget(name, repo, conversationId, artifactsDir) {
   const target = targetFor(name);
   if (!(await target.isInstalled())) {
@@ -163,6 +214,13 @@ async function smokeTarget(name, repo, conversationId, artifactsDir) {
   });
   await writeFile(join(artifactsDir, `${name}.stripped.txt`), stripped);
 
+  // Fabrication writes into the *user's real* session storage — that is the
+  // point of the test — so every run leaves an artifact behind unless it
+  // cleans up. Left unswept these accumulate in the picker the harness exists
+  // to protect: dozens of dead sessions pointing at temp repos that were
+  // deleted the moment the run ended.
+  if (!KEEP) await removeFabricated(name, plan);
+
   // Success: both planted markers visible in the rendered scrollback.
   const satisfied = stripped.includes(USER_MARKER) && stripped.includes(ASSISTANT_MARKER);
   const glitches = [];
@@ -186,7 +244,7 @@ async function smokeTarget(name, repo, conversationId, artifactsDir) {
 const argv = process.argv.slice(2);
 const manual = argv.includes("--manual");
 const pick = argv.find((a) => !a.startsWith("--")) ?? "all";
-const names = pick === "all" ? ["claude-code", "codex"] : [pick];
+const names = pick === "all" ? ["claude-code", "codex", "opencode"] : [pick];
 const artifactsDir = await mkdtemp(join(tmpdir(), "turnbridge-smoke-artifacts-"));
 await mkdir(artifactsDir, { recursive: true });
 const { repo, conversationId } = await makeSeededRepo(artifactsDir);
@@ -215,14 +273,36 @@ if (manual) {
   }
   out.push(
     "What to check on screen:",
-    `  1. The import notice renders as the first message.`,
-    `  2. All four turns are visible in the scrollback — user marker "${USER_MARKER}",`,
-    `     assistant marker "${ASSISTANT_MARKER}", the bullets/code-fence turn, and the`,
-    `     "[visible thinking]" + numbered-list turn. (Past bug: model saw the context`,
+    `  1. The import notice renders as the first message. (opencode orders by`,
+    `     timestamp, not payload position: stamped wrong it sorts last and shows`,
+    `     a QUEUED badge, as if it were a prompt about to be sent.)`,
+    `  2. All six turns are visible in the scrollback — user marker "${USER_MARKER}",`,
+    `     assistant marker "${ASSISTANT_MARKER}", the bullets/code-fence turn, the`,
+    `     thinking turn (labeled "[visible thinking]" text on claude-code/codex, a`,
+    `     collapsed "Thought" part on opencode), and the Read tool call plus its`,
+    `     output "${TOOL_MARKER}". (Past bug: model saw the context`,
     `     but the TUI scrollback rendered empty.)`,
     "  3. No mangled spacing/wrapping, stray JSON, or escape-code artifacts.",
     "  4. Quit without sending a prompt (Ctrl+C twice) — or send one to verify recall.",
     "",
+    ...(names.includes("opencode")
+      ? [
+          "opencode only:",
+          "  - The Read call renders as a ⚙ row. Expand it (opencode collapses tool",
+          `    rows, so the output is not visible by default): it must carry the real`,
+          `    recorded output "${TOOL_MARKER}", not a`,
+          '    "not captured" placeholder — and that output must appear only there,',
+          "    not also as loose text beside the call.",
+          "  - A one-time `Model turnbridge/<model> is not valid` toast is EXPECTED: the",
+          "    source model id is propagated verbatim rather than replaced with a",
+          "    recognized-but-false one, so opencode warns once and the composer falls",
+          "    back to your configured model.",
+          "  - Fabrication writes into opencode's shared SQLite DB, so --manual leaves a",
+          "    real session behind. Clean up with:",
+          "        opencode session delete <the ses_tb_… id printed above>",
+          "",
+        ]
+      : []),
     `Repo and sessions are kept. Temp repo: ${repo.root}`,
     "",
   );

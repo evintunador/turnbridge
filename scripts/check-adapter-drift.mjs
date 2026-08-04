@@ -24,6 +24,12 @@ const TARGETS = [
     npmPackage: "@openai/codex",
     spec: "docs/specs/codex-rollout-format.md",
   },
+  {
+    name: "OpenCode",
+    adapter: new URL("../src/targets/opencode.ts", import.meta.url),
+    npmPackage: "opencode-ai",
+    spec: "docs/specs/opencode-session-format.md",
+  },
 ];
 
 async function pinnedPrefixes(adapterUrl) {

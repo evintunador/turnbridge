@@ -1,6 +1,6 @@
 {
   "name": "turnbridge",
-  "version": "0.5.2",
+  "version": "0.6.1",
   "description": "Lossless visible-conversation continuity between coding agent CLIs.",
   "type": "module",
   "license": "MIT",
@@ -28,6 +28,7 @@
     "coding-agent",
     "claude-code",
     "codex",
+    "opencode",
     "resume",
     "session",
     "cross-cli"
