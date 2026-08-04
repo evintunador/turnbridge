@@ -1,4 +1,5 @@
-// Content-level revalidation probe for codex 0.145.0: fabricate a session
+// Content-level revalidation probe, run against whatever codex is installed
+// (0.145.0 originally; last run 0.146.0, 2026-08-02): fabricate a session
 // from a planted-marker conversation, then `codex exec resume <id>` asking
 // the model to recall the marker — proves the model actually sees the
 // fabricated history, not just that the TUI renders it.

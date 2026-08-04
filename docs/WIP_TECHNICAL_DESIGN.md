@@ -147,12 +147,20 @@ before broadening):
   `file:` dependency for a semver range — `prepublishOnly` refuses to publish
   until this happens. Deliberately deferred while both packages are iterated
   on and dogfooded for a few days.
-- Adapter-drift automation stage 2: the daily check
-  (`.github/workflows/adapter-drift.yml`) currently opens a tracking issue on
-  drift; the commented-out follow-on job hands the issue to a Claude Code
-  action that revalidates the spec against the new CLI release and drafts the
-  PR. Needs an `ANTHROPIC_API_KEY` repo secret and comfort with CI pushing
-  branches.
+- Adapter-drift automation stays **reporting-only** (decided 2026-08-02). The
+  daily check (`.github/workflows/adapter-drift.yml`) opens a tracking issue on
+  drift and now closes it when drift clears; it never writes to the repo.
+  Auto-drafting the revalidation PR was built and then reverted. The reasoning
+  is worth keeping, because the idea is tempting enough to recur: CI cannot
+  validate a pin — the probes need both target CLIs installed, a TTY for the
+  interactive smoke test, and paid model credentials per provider to make the
+  recall turns real. So any PR CI opened would be a mechanical one-line bump
+  with nothing behind it, saving a trivial edit while creating a *mergeable*
+  artifact that asserts a validation nobody performed. An issue cannot be
+  merged, and that asymmetry is the point. The agent-drafted variant (the old
+  stage 2, needing an `ANTHROPIC_API_KEY` secret) fails for the same reason —
+  the API key was never the binding constraint; the provider credentials the
+  probes need are, and no amount of agency in CI conjures them.
 - **opencode is a full member** *(target added 2026-08-02, opencode 1.18.5;
   capture landed in conversation-ledger 0.18.0 and verified here 2026-08-03)*.
   Both directions are exercised: a Claude Code conversation bridged into

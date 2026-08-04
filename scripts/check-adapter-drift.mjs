@@ -71,10 +71,14 @@ if (process.env.GITHUB_OUTPUT) {
       (r) => `| ${r.name} (\`${r.npmPackage}\`) | \`${r.prefix}\` | \`${r.latest}\` | ${r.ok ? "validated" : "**drift**"} |`,
     ),
     "",
-    "Revalidation steps for each drifted target:",
-    "1. Re-verify the fabrication spec (`" + rows.filter((r) => !r.ok).map((r) => r.spec).join("`, `") + "`) against the new release.",
-    "2. Run `npm run smoke:interactive` with the new CLI installed.",
-    "3. Widen `VALIDATED_VERSION_PREFIX` (or amend the writer) in the adapter.",
+    "Revalidation is a local job — CI cannot do it (see the workflow's header comment).",
+    "Steps for each drifted target:",
+    "1. Install the new release, then re-verify the fabrication spec (`" +
+      rows.filter((r) => !r.ok).map((r) => r.spec).join("`, `") + "`) against a session it authored.",
+    "2. Run `npm run smoke:interactive`, plus the headless probes in `scripts/` that touch the",
+    "   drifted target (content recall, structured tool replay, large history).",
+    "3. Widen `VALIDATED_VERSION_PREFIX` (or amend the writer) in the adapter, and record the",
+    "   evidence in the spec's revalidation log.",
   ].join("\n");
   await appendFile(
     process.env.GITHUB_OUTPUT,
