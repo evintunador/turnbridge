@@ -79,6 +79,36 @@ evidence, so turnbridge does not need to alter capture to avoid double-count.
 
 ## Fabrication contract (per target adapter)
 
+**Governing rule: the fabricated session has to work in the target.** Fidelity
+to the source is a property of a session that functions, not a substitute for
+one. Where a target's native records demand a particular shape — a resolvable
+provider id, a specific part structure — match that shape, and carry the
+source's identity somewhere that does not break resume. A bridged session that
+is unimpeachably honest and cannot be continued has failed at the only thing it
+exists to do. *(Corrected 2026-08-06, after `providerID: "turnbridge"` silently
+bricked continuation on every bridged opencode session — see the opencode notes
+below.)*
+
+Every field a fabricated session carries falls into one of three tiers, and the
+tier decides where the logic lives:
+
+1. **Portable** — the same meaning in every target: turn role, visible text,
+   ordering, timestamps. Shared code writes these once; adapters do not touch
+   them.
+2. **Portable by default, overridden where a target requires it** — usually
+   transferable, but some targets reject or mishandle the generic form, so the
+   adapter substitutes a working value and discloses the substitution. The
+   source model id is the type case; foreign tool calls are the other
+   (structured where the target accepts unknown names, labeled text where not).
+3. **Target-specific** — no portable form exists and the adapter owns it
+   outright: opencode's `providerID`/`projectID` and its `step-start`/
+   `step-finish` part scaffolding, Claude's `parentUuid` chain, Codex's paired
+   `event_msg`/`response_item` twins.
+
+Tiers 2 and 3 are what the adapter abstraction exists for. Discovering that a
+field assumed to be tier 1 is really tier 2 is a contract change worth
+recording here, not a quiet workaround inside one adapter.
+
 - Pin the CLI versions the writer was validated against; on an unknown version
   warn and offer bootstrap.
 - Write only new session files under the CLI's own session directory; never
@@ -86,11 +116,15 @@ evidence, so turnbridge does not need to alter capture to avoid double-count.
 - Represent foreign tool calls faithfully (or as clearly-labeled text when the
   target rejects unknown tool schemas — see per-adapter spec notes).
 - Propagate the source model id into fabricated assistant envelopes verbatim
-  (decided 2026-07-21). If the target harness recognizes it — e.g. the user
-  registered matching external models in Claude Code — the session restores
-  seamlessly; otherwise the target warns once and falls back to its default,
-  which is accurate ("this bridge changed models"). Never substitute a
-  recognized-but-false id.
+  **where the target can resolve it** (decided 2026-07-21, amended 2026-08-06).
+  If the target recognizes it — e.g. the user registered matching external
+  models in Claude Code — the session restores seamlessly. If it does not, write
+  a value the target *can* resolve and disclose the real source model in the
+  import notice; do not leave an unresolvable id in a field the target uses to
+  dispatch. The original rule ("never substitute a recognized-but-false id")
+  was written to keep the transcript honest and instead produced sessions that
+  could not be continued at all; honesty belongs in the disclosure, not in a
+  dispatch field.
 
 Reverse-engineered, empirically verified format specs (pinned versions,
 minimal working schemas, unknowns): [docs/specs/claude-session-format.md](specs/claude-session-format.md),
