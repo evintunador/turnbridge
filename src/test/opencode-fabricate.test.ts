@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { appendEvents } from "conversation-ledger";
-import { buildImportPayload } from "../targets/opencode.js";
+import { buildImportPayload, resolveModel } from "../targets/opencode.js";
 import { listConversations } from "../conversations.js";
 import { cleanupRepo, makeTempRepo, seedConversation } from "./helpers.js";
 
@@ -23,6 +23,9 @@ const OPTS = {
   projectId: "abc123project",
   now: NOW,
   replayReasoning: true,
+  // Resolved by `fabricate` from `opencode models`; the payload builder is pure.
+  model: { providerID: "ds4", modelID: "deepseek-v4-flash", substitutedFrom: ["claude-test"] },
+  snapshot: "0123456789abcdef0123456789abcdef01234567",
 };
 
 interface Part {
@@ -102,7 +105,12 @@ test("builds a session envelope opencode's importer accepts", async () => {
     }
     assert.match(payload.messages[0]!.parts[0]!.text!, /imported from Claude Code/);
     assert.equal(payload.messages[1]!.parts[0]!.text, "add a retry to the fetcher");
-    assert.equal(payload.messages[2]!.parts[0]!.text, "Done, retries three times.");
+    // assistant parts are wrapped in step-start … step-finish, so the text is
+    // not at index 0 the way it is on a user message
+    assert.equal(
+      payload.messages[2]!.parts.find((p) => p.type === "text")!.text,
+      "Done, retries three times.",
+    );
     assert.doesNotThrow(() => JSON.parse(JSON.stringify(payload)));
   } finally {
     await cleanupRepo(repo);
@@ -312,18 +320,80 @@ test("thinking replays as a reasoning part, and folds to labeled text when repla
   }
 });
 
-test("the source model id is propagated verbatim, never a recognized-but-false one", async () => {
+test("the session dispatches with a provider opencode can resolve, never turnbridge's own", async () => {
+  // Regression: this asserted providerID === "turnbridge" — an id no opencode
+  // install can resolve. The agent loop resolves its model from what the
+  // session stores (not from `-m`, not from the TUI picker), so it threw
+  // ProviderModelNotFoundError and exited before issuing a request: history
+  // rendered in full and the session could never be continued.
   const { payload, cleanup } = await payloadFor([
     { role: "user", blocks: [{ type: "text", text: "hi" }] },
     { role: "assistant", blocks: [{ type: "text", text: "hello" }] },
   ]);
   try {
     const assistant = payload.messages.find((m) => m.info["role"] === "assistant")!;
-    assert.equal(assistant.info["modelID"], "claude-test");
-    // the provider is turnbridge's own, precisely because it is not a real
-    // opencode provider: the composer falls back to the user's model
-    assert.equal(assistant.info["providerID"], "turnbridge");
-    assert.deepEqual(payload.info["model"], { id: "claude-test", providerID: "turnbridge" });
+    assert.equal(assistant.info["providerID"], "ds4");
+    assert.equal(assistant.info["modelID"], "deepseek-v4-flash");
+    assert.deepEqual(payload.info["model"], { id: "deepseek-v4-flash", providerID: "ds4" });
+    for (const message of payload.messages) {
+      assert.notEqual(message.info["providerID"], "turnbridge");
+    }
+  } finally {
+    await cleanup();
+  }
+});
+
+test("a substituted model is disclosed in the import notice", async () => {
+  // Provenance cannot live in providerID (a dispatch field), so it lives here.
+  const { payload, cleanup } = await payloadFor([
+    { role: "user", blocks: [{ type: "text", text: "hi" }] },
+    { role: "assistant", blocks: [{ type: "text", text: "hello" }] },
+  ]);
+  try {
+    const notice = payload.messages[0]!.parts[0]!.text ?? "";
+    assert.match(notice, /produced by claude-test/);
+    assert.match(notice, /continues with ds4\/deepseek-v4-flash/);
+  } finally {
+    await cleanup();
+  }
+});
+
+test("a source model opencode can resolve is kept verbatim", async () => {
+  assert.deepEqual(resolveModel(["deepseek-v4-flash"], ["ds4/deepseek-v4-flash", "opencode/x"]), {
+    providerID: "ds4",
+    modelID: "deepseek-v4-flash",
+    substitutedFrom: [],
+  });
+  assert.deepEqual(resolveModel(["ds4/deepseek-v4-flash"], ["ds4/deepseek-v4-flash"]), {
+    providerID: "ds4",
+    modelID: "deepseek-v4-flash",
+    substitutedFrom: [],
+  });
+  // Ambiguous bare id: same model name under two providers falls through to
+  // substitution rather than guessing which provider was meant.
+  assert.deepEqual(resolveModel(["m"], ["a/m", "b/m"]), {
+    providerID: "a",
+    modelID: "m",
+    substitutedFrom: ["m"],
+  });
+  // No models listed at all: the caller must not fabricate.
+  assert.equal(resolveModel(["m"], []), null);
+});
+
+test("assistant messages are wrapped in step-start … step-finish like native ones", async () => {
+  const { payload, cleanup } = await payloadFor([
+    { role: "user", blocks: [{ type: "text", text: "hi" }] },
+    { role: "assistant", blocks: [{ type: "text", text: "hello" }] },
+  ]);
+  try {
+    const assistant = payload.messages.find((m) => m.info["role"] === "assistant")!;
+    const types = assistant.parts.map((p) => p.type);
+    assert.equal(types[0], "step-start");
+    assert.equal(types[types.length - 1], "step-finish");
+    assert.ok(types.includes("text"));
+    // User messages carry no step scaffolding, as in native sessions.
+    const user = payload.messages.find((m) => m.info["role"] === "user")!;
+    assert.ok(!user.parts.some((p) => p.type.startsWith("step-")));
   } finally {
     await cleanup();
   }

@@ -140,7 +140,13 @@ to replay (foreign tool calls fold into labeled text). Claude accepts foreign
 opencode is the first target that breaks the "write a new session file"
 assumption: every session lives in one shared SQLite DB, so fabrication builds
 a payload in opencode's own export format and shells out to `opencode import`.
-Three consequences the file-based targets don't have. Import is **not atomic**
+It is also the target that taught the tier model its lesson twice over: the
+session's stored `providerID` is what its agent loop dispatches from (an
+unresolvable id is fatal, not cosmetic), and **ids are an ordering key** —
+parts render in `id` order, and message ids must sort ahead of the ones
+opencode mints next, or a resumed session answers and then keeps generating.
+Both are tier 3, and both looked fine on screen while being broken underneath.
+Three further consequences the file-based targets don't have. Import is **not atomic**
 — a payload rejected part-way leaves a truncated session behind, so a failed
 import deletes it before falling back to bootstrap. Message order comes from
 `time.created` rather than payload position, so the import notice is backdated

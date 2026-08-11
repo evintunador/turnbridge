@@ -137,6 +137,31 @@ This is the opposite of the Claude Code target, where the notice is deliberately
 because that format renders in file order. turnbridge therefore backdates the opencode notice to
 `earliest_event_ms - 1`. Verified: notice renders first, no `QUEUED` badge.
 
+### 4.1 Ids are an ordering key too *(added 2026-08-06, 1.18.5)*
+
+`time.created` governs **rendered message order**, but ids carry ordering of their own, and both
+bit us:
+
+- **Parts within a message are ordered by `id`, not by array position.** Measured: a fabricated
+  assistant message's exported part order was exactly its id-sorted order, while native part ids
+  ascend with emission (`prt_fd479a2f1001…` step-start < `prt_fd479a6c4001…` text <
+  `prt_fd479a716001…` step-finish). This was invisible while turnbridge emitted exactly one part
+  per message; adding step-start/step-finish surfaced it immediately, with `step-finish` exported
+  ahead of `step-start`. Part ids must therefore be minted in the order the parts should appear —
+  including allocating the `step-start` id *before* converting the message's content parts.
+- **Message ids must also sort ahead of ids opencode mints later.** Native ids are time-ascending
+  base62 (`msg_fd4799cd2001…` < `msg_fd4b3c98d001…`), presently in the `f` range. turnbridge's
+  old `msg_tb_<uuid>` lost twice: `t` sorts after `f`, so every fabricated message ranked *after*
+  the reply opencode was about to write, and the uuid randomized history against itself.
+  Observed effect: a resumed fabricated session answered and then **kept generating** — 10-13
+  assistant turns for a single prompt, until the process was killed — where a native session in
+  the same directory, project, and model answered once in 12.6s. Giving fabricated ids a leading
+  `0` and an emission counter reduced that to exactly one assistant turn, with the same prompt and
+  model. The rendered transcript looked correct throughout, which is why this hid behind the
+  provider bug in §6.
+
+turnbridge now writes `msg_0tb<counter><rand>` and `prt_tb_<stamp><counter><rand>`.
+
 ## 5. Parts
 
 Observed types: `text`, `reasoning`, `tool`, `step-start`, `step-finish`, `patch`.
@@ -146,9 +171,13 @@ Every part carries `id` (`prt_…`), `sessionID`, `messageID`.
 - **`text`** — `{ type, text, id, sessionID, messageID }`. Minimal and always accepted.
 - **`reasoning`** — as `text` plus `time: { start, end }`. Renders as a collapsed
   `+ Thought: <duration>` line.
-- **`step-start`** — real assistant messages begin with one (carrying a `snapshot` git sha).
-  **Not required**: fabricated assistant messages with no `step-start` render their text
-  normally. turnbridge omits it rather than inventing a snapshot id.
+- **`step-start`** / **`step-finish`** — real assistant messages are wrapped in the pair, both
+  carrying a `snapshot` git sha; `step-finish` also carries `reason`, `tokens`, `cost`.
+  *Revised 2026-08-06:* the earlier note here said `step-start` was "not required", because a bare
+  `text` part renders fine — which is true of **rendering** and was the wrong test. The TUI and
+  the agent loop are built around these parts, so turnbridge now emits both, with the launch
+  repo's `HEAD` as `snapshot` (omitted outside a git repo) rather than inventing a sha. Mind §4.1:
+  the `step-start` id has to be allocated before the content parts or it sorts after them.
 - **`tool`** — `{ type: "tool", tool: <name>, callID, state, … }`. **`state` requires all six of
   `status`, `input`, `output`, `title`, `metadata`, `time`.** Omitting any one fails the entire
   import with `Missing key at ["state"][<name>]` — bisected key by key. This is the single
@@ -201,6 +230,16 @@ history. Fabrication was never at fault: the model does read bridged context.
 The contract now says to propagate the source model id only where the target can resolve it, and
 otherwise to write a resolvable value and disclose the real source model in the import notice —
 `providerID` is a dispatch field, not a provenance field.
+
+**What turnbridge does now.** At fabricate time it lists `opencode models` and resolves the
+source model against it: an exact `provider/model`, or an unambiguous bare model id, is kept
+verbatim (opencode→opencode, or a user who registered the same model, keeps its own). Otherwise
+it takes the first listed model, records the substitution in the import notice
+("The turns below were produced by X; this session continues with Y…") and in a launch note. If
+`opencode models` yields nothing, fabrication throws `FabricationUnsupportedError` and falls back
+to bootstrap rather than writing a session that cannot dispatch. The chosen model is only a
+starting point: verified that `-m` overrides it on a bridged session (stored `big-pickle`, ran on
+`deepseek-v4-flash-free`), which it could not do while the stored provider was unresolvable.
 
 ## 7. Verification log (1.18.5, 2026-08-02)
 
