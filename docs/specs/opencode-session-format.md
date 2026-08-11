@@ -165,13 +165,42 @@ Every part carries `id` (`prt_…`), `sessionID`, `messageID`.
 
 ## 6. Model identity
 
-The fabrication contract (docs/WIP_TECHNICAL_DESIGN.md) says to propagate the source model id
-verbatim and never substitute a recognized-but-false one. turnbridge writes
-`modelID: <source model>` with `providerID: "turnbridge"`.
+> **CORRECTED 2026-08-06 (1.18.5).** The assessment below was wrong in a way that broke every
+> bridged opencode session from 2026-08-02 until it was found. It is kept, struck through, so
+> the failure mode is recognizable if it recurs on another target.
 
-Observed consequence on resume: opencode shows a one-time toast —
+turnbridge writes `modelID: <source model>` with `providerID: "turnbridge"`, per the old
+fabrication-contract rule to propagate the source model id verbatim and never substitute a
+recognized-but-false one.
+
+~~Observed consequence on resume: opencode shows a one-time toast —
 `Model turnbridge/<model> is not valid` — and the composer falls back to the user's configured
-model, which is accurate: the bridge did change models. History renders in full either way.
+model, which is accurate: the bridge did change models. History renders in full either way.~~
+
+**What actually happens.** The toast is real and the *composer* does fall back, but opencode's
+**agent loop** resolves the model from the session's stored `providerID`/`modelID`, not from the
+composer, `-m`, or the TUI model picker. There is no provider named `turnbridge`, so the loop
+throws and exits before issuing any request:
+
+```
+ERROR message=failed error="ProviderModelNotFoundError: Model not found: turnbridge/<model>."
+```
+
+Logs show `loop step=0` → `exiting loop` with **no `stream` line**, where a native session logs
+`process` → `stream` → `llm runtime selected`. No network request is made, so the provider is
+never implicated. Symptoms depend on how the session is scoped: filed under a registered
+project, `opencode run -s` exits **0 with empty output** and the TUI silently swallows the
+prompt (it is persisted as a `user` message with no assistant reply); filed under `global`, it
+surfaces as `UnknownError: Unexpected server error`. In both cases history renders in full — the
+session is readable and un-continuable, which is why the TUI check missed it.
+
+Patching only the four `"providerID": "turnbridge"` occurrences to `"opencode"`, changing nothing
+else, restores continuation **and** the model correctly recalls a marker planted in the bridged
+history. Fabrication was never at fault: the model does read bridged context.
+
+The contract now says to propagate the source model id only where the target can resolve it, and
+otherwise to write a resolvable value and disclose the real source model in the import notice —
+`providerID` is a dispatch field, not a provenance field.
 
 ## 7. Verification log (1.18.5, 2026-08-02)
 
