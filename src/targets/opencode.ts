@@ -99,18 +99,129 @@ interface ImportPart {
   snapshot?: string;
   reason?: string;
   time?: Record<string, unknown>;
+  tokens?: Record<string, unknown>;
+  cost?: number;
 }
 
+/**
+ * The provider/model a fabricated session dispatches with.
+ *
+ * `providerID` is a **dispatch** field, not a provenance field: opencode
+ * resolves its agent loop's model from what the session stores, so an id it
+ * cannot resolve does not degrade to a warning — the loop throws
+ * `ProviderModelNotFoundError` and exits before issuing a request, leaving a
+ * session that renders perfectly and cannot be continued. Provenance for a
+ * substituted model lives in the import notice instead.
+ */
+interface ResolvedModel {
+  providerID: string;
+  modelID: string;
+  /** Source model ids opencode could not resolve, disclosed in the notice. */
+  substitutedFrom: string[];
+}
+
+/**
+ * Part ids must sort in emission order.
+ *
+ * opencode renders a message's parts ordered by `id` — not by array position,
+ * the way §4's message ordering keys off `time.created`. Native ids are
+ * time-ordered (`prt_fd479a2f1001…` < `prt_fd479a716001…` for step-start before
+ * step-finish), so this is invisible until a message carries more than one
+ * part. It did not until assistant messages gained step-start/step-finish, and
+ * random uuid ids then scrambled them — exports showed `step-finish` ahead of
+ * `step-start`.
+ */
+let partSeq = 0;
 function partId(): string {
-  return `prt_tb_${randomUUID().slice(0, 12)}`;
+  const stamp = Date.now().toString(36);
+  const seq = (partSeq++).toString(36).padStart(6, "0");
+  return `prt_tb_${stamp}${seq}${randomUUID().slice(0, 4)}`;
 }
 
+/**
+ * Message ids must sort in emission order AND ahead of ids opencode mints later.
+ *
+ * Native ids are time-ascending base62 (`msg_fd4799cd2001…` precedes
+ * `msg_fd4b3c98d001…`), currently in the `f` range and only increasing. The old
+ * `msg_tb_<uuid>` scheme lost on both counts: `t` > `f`, so every fabricated
+ * message sorted *after* the reply opencode was about to write, and the uuid
+ * randomized history against itself. Leading `0` keeps fabricated history below
+ * anything opencode will mint (its ids would have to regress to the digit range
+ * to collide), and the counter keeps the transcript in order.
+ */
+let msgSeq = 0;
 function messageId(): string {
-  return `msg_tb_${randomUUID().slice(0, 12)}`;
+  const seq = (msgSeq++).toString(36).padStart(6, "0");
+  return `msg_0tb${seq}${randomUUID().slice(0, 8)}`;
 }
 
 function textPart(text: string, sessionId: string, msgId: string): ImportPart {
   return { type: "text", text, id: partId(), sessionID: sessionId, messageID: msgId };
+}
+
+/**
+ * Native assistant messages wrap their content in `step-start` … `step-finish`.
+ * Fabricated ones used to carry a bare `text` part — accepted by the importer
+ * and rendered fine, which is why it survived, but it is not the shape the TUI
+ * and the agent loop are built around. Match the native scaffolding.
+ */
+function stepStartPart(sessionId: string, msgId: string, snapshot?: string): ImportPart {
+  const part: ImportPart = { type: "step-start", id: partId(), sessionID: sessionId, messageID: msgId };
+  if (snapshot) part.snapshot = snapshot;
+  return part;
+}
+
+function stepFinishPart(sessionId: string, msgId: string, snapshot?: string): ImportPart {
+  const part: ImportPart = {
+    type: "step-finish",
+    reason: "stop",
+    tokens: { total: 0, input: 0, output: 0, reasoning: 0, cache: { write: 0, read: 0 } },
+    cost: 0,
+    id: partId(),
+    sessionID: sessionId,
+    messageID: msgId,
+  };
+  if (snapshot) part.snapshot = snapshot;
+  return part;
+}
+
+/** Distinct source model ids seen on agent turns, in first-seen order. */
+export function sourceModelIds(summary: ConversationSummary): string[] {
+  const ids: string[] = [];
+  for (const event of summary.events) {
+    if (event.actor.type !== "agent") continue;
+    const id = event.actor.id;
+    if (id && !ids.includes(id)) ids.push(id);
+  }
+  return ids;
+}
+
+/**
+ * Choose the provider/model the fabricated session dispatches with.
+ *
+ * Per the fabrication contract (docs/WIP_TECHNICAL_DESIGN.md), the source model
+ * id is propagated verbatim *where the target can resolve it* — bridging
+ * opencode→opencode, or a user who registered the same model, keeps its own
+ * model — and otherwise a resolvable model is substituted and disclosed.
+ *
+ * `available` is `provider/model` as `opencode models` prints it. Exported for
+ * tests: the lookup is pure, only the listing shells out.
+ */
+export function resolveModel(sourceIds: string[], available: string[]): ResolvedModel | null {
+  if (available.length === 0) return null;
+  const split = (entry: string) => {
+    const at = entry.indexOf("/");
+    return { providerID: entry.slice(0, at), modelID: entry.slice(at + 1) };
+  };
+  for (const id of sourceIds) {
+    // Either a fully-qualified `provider/model`, or a bare model id that is
+    // unambiguous across providers.
+    const exact = available.find((entry) => entry === id);
+    if (exact) return { ...split(exact), substitutedFrom: [] };
+    const byModel = available.filter((entry) => split(entry).modelID === id);
+    if (byModel.length === 1) return { ...split(byModel[0]!), substitutedFrom: [] };
+  }
+  return { ...split(available[0]!), substitutedFrom: sourceIds };
 }
 
 function resultBody(block: TurnBlock): string {
@@ -283,6 +394,10 @@ export interface ImportPayloadOptions {
   projectId: string;
   now: Date;
   replayReasoning: boolean;
+  /** Provider/model the session dispatches with; must be resolvable by opencode. */
+  model: ResolvedModel;
+  /** Git sha for the step parts, as native sessions carry. Omitted if unknown. */
+  snapshot?: string | undefined;
 }
 
 /**
@@ -296,7 +411,7 @@ export function buildImportPayload(
   summary: ConversationSummary,
   opts: ImportPayloadOptions,
 ): Record<string, unknown> {
-  const { sessionId, cwd, version, projectId, now, replayReasoning } = opts;
+  const { sessionId, cwd, version, projectId, now, replayReasoning, model, snapshot } = opts;
   const nowMs = now.getTime();
   const replayCount = countReplayedReasoning(summary, replayReasoning);
 
@@ -307,24 +422,25 @@ export function buildImportPayload(
   // it just ahead of the oldest turn is what puts it where it reads as a
   // preamble; nothing about resume depends on the notice being newest.
   const noticeMs = earliestEventMs(summary, now) - 1;
+  // The bridge changed models unless opencode happened to resolve the source
+  // id, and the notice is where that is disclosed — `providerID` cannot carry
+  // it (see ResolvedModel).
+  const substitution =
+    model.substitutedFrom.length > 0
+      ? `The turns below were produced by ${model.substitutedFrom.join(", ")}; this session ` +
+        `continues with ${model.providerID}/${model.modelID}, which is what opencode can run here. `
+      : "";
   const noticeText =
     `[turnbridge import notice] This conversation was imported from ${cliLabel(summary.source)}. ` +
     "The history below is the literal visible transcript. Past tool calls are replayed as history " +
     "records, not as calls to re-run. " +
+    substitution +
     (replayCount > 0
       ? `${replayCount} visible-thinking block(s) are replayed as reasoning; hidden reasoning and ` +
         "provider-private state were not transferred."
       : "Hidden reasoning and provider-private state were not transferred.");
 
-  // The source model, propagated verbatim per the fabrication contract in
-  // docs/WIP_TECHNICAL_DESIGN.md — never a recognized-but-false id. The
-  // provider stays "turnbridge" precisely because it is not a real opencode
-  // provider: the composer falls back to the user's configured model, which is
-  // accurate, since this bridge did change models.
-  const sourceModel =
-    summary.events.find((e) => e.actor.type === "agent" && e.actor.id)?.actor.id ??
-    "turnbridge-import";
-  const model = { providerID: "turnbridge", modelID: sourceModel };
+  const messageModel = { providerID: model.providerID, modelID: model.modelID };
 
   const noticeId = messageId();
   const messages: Record<string, unknown>[] = [
@@ -333,7 +449,7 @@ export function buildImportPayload(
         role: "user",
         time: { created: noticeMs },
         agent: "build",
-        model,
+        model: messageModel,
         id: noticeId,
         sessionID: sessionId,
         summary: { diffs: [] },
@@ -359,6 +475,10 @@ export function buildImportPayload(
     const role = event.actor.type === "human" ? "user" : "assistant";
     const msgId = messageId();
 
+    // step-start must be minted BEFORE the content parts: part ids sort in
+    // emission order and opencode renders by id, so allocating it afterwards
+    // puts the wrapper after what it is supposed to wrap.
+    const stepStart = role === "assistant" ? stepStartPart(sessionId, msgId, snapshot) : null;
     const parts = convertBlocksToParts(content.blocks, {
       sessionId,
       msgId,
@@ -384,16 +504,21 @@ export function buildImportPayload(
       info.tokens = { total: 0, input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } };
       info.time = { created: createdMs, completed: createdMs };
       info.finish = "stop";
-      info.modelID = event.actor.type === "agent" && event.actor.id ? event.actor.id : sourceModel;
-      info.providerID = "turnbridge";
+      info.modelID = model.modelID;
+      info.providerID = model.providerID;
       info.parentID = lastUserId;
     } else {
-      info.model = model;
+      info.model = messageModel;
       info.summary = { diffs: [] };
       lastUserId = msgId;
     }
 
-    messages.push({ info, parts });
+    // Native assistant messages are wrapped in step-start … step-finish.
+    const wrapped = stepStart
+      ? [stepStart, ...parts, stepFinishPart(sessionId, msgId, snapshot)]
+      : parts;
+
+    messages.push({ info, parts: wrapped });
   }
 
   return {
@@ -405,7 +530,7 @@ export function buildImportPayload(
       path: "",
       title: pickerTitle(summary),
       agent: "build",
-      model: { id: sourceModel, providerID: "turnbridge" },
+      model: { id: model.modelID, providerID: model.providerID },
       version,
       summary: { additions: 0, deletions: 0, files: 0 },
       cost: 0,
@@ -414,6 +539,24 @@ export function buildImportPayload(
     },
     messages,
   };
+}
+
+/** `provider/model` entries as `opencode models` prints them, one per line. */
+function availableModels(cwd: string): string[] {
+  const result = spawnSync("opencode", ["models"], { encoding: "utf8", cwd });
+  if (result.status !== 0) return [];
+  return (result.stdout ?? "")
+    .split("\n")
+    .map((line) => line.trim())
+    .filter((line) => line.includes("/") && !line.startsWith("-"));
+}
+
+/** HEAD of the launch repo, for the step parts. Absent outside a git repo. */
+function headSnapshot(cwd: string): string | undefined {
+  const result = spawnSync("git", ["rev-parse", "HEAD"], { encoding: "utf8", cwd });
+  if (result.status !== 0) return undefined;
+  const sha = (result.stdout ?? "").trim();
+  return /^[0-9a-f]{40}$/.test(sha) ? sha : undefined;
 }
 
 /** Best-effort removal of a session a failed import left half-written. */
@@ -464,6 +607,25 @@ export const opencodeTarget: TargetAdapter = {
       );
     }
 
+    // opencode dispatches from the session's stored provider/model, so an
+    // unresolvable id is fatal to continuation rather than cosmetic. If we
+    // cannot learn what this install can run, fabrication is not safe — fall
+    // back to bootstrap instead of writing a session that cannot answer.
+    const model = resolveModel(sourceModelIds(summary), availableModels(cwd));
+    if (!model) {
+      throw new FabricationUnsupportedError(
+        "could not list opencode models, so the fabricated session would have no provider " +
+          "opencode can dispatch with",
+        "opencode",
+      );
+    }
+    if (model.substitutedFrom.length > 0) {
+      notes.push(
+        `opencode cannot resolve ${model.substitutedFrom.join(", ")}; the bridged session runs on ` +
+          `${model.providerID}/${model.modelID} and the import notice says so`,
+      );
+    }
+
     const sessionId = `ses_tb_${randomUUID()}`;
     const now = new Date();
     const payload = buildImportPayload(summary, {
@@ -473,6 +635,8 @@ export const opencodeTarget: TargetAdapter = {
       projectId: projectId ?? GLOBAL_PROJECT_ID,
       now,
       replayReasoning: opts.replayReasoning,
+      model,
+      snapshot: headSnapshot(cwd),
     });
 
     const dir = join(configDir(), "imports");
