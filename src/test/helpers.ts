@@ -59,7 +59,7 @@ export function turnDraft(conversationId: string, source: string, spec: TurnSpec
       source,
       session_id: conversationId.split(":").slice(1).join(":"),
     },
-    conversation: { id: conversationId, seq: spec.seq },
+    stream: { id: conversationId, seq: spec.seq },
     content: { role: spec.role, blocks: [{ type: "text", text: spec.text }] },
   };
 }
@@ -103,7 +103,7 @@ export function reasoningEventDraft(
       source: spec.source ?? source,
       session_id: sessionId,
     },
-    conversation: { id: conversationId, seq: spec.seq },
+    stream: { id: conversationId, seq: spec.seq },
     content: { opaque: true },
     raw: {
       format: "codex-rollout-jsonl/2",

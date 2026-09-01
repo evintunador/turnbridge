@@ -36,7 +36,7 @@ test("groups events into conversations with titles, owners, ordering", async () 
     assert.equal(claude.turnCount, 3);
     assert.deepEqual(claude.owners, ["me@x.com"]);
     assert.deepEqual(claude.ownerDisplays, ["Me"]);
-    assert.equal(claude.events[0]!.conversation!.seq, 0);
+    assert.equal(claude.events[0]!.stream!.seq, 0);
   } finally {
     await cleanupRepo(repo);
   }
@@ -54,7 +54,7 @@ test("reasoning events ride along in seq order but never count as turns", async 
     const [summary] = await listConversations(repo, { all: true });
     assert.equal(summary!.turnCount, 2); // reasoning event excluded from the count
     assert.deepEqual(
-      summary!.events.map((e) => `${e.kind}:${e.conversation!.seq}`),
+      summary!.events.map((e) => `${e.kind}:${e.stream!.seq}`),
       ["conversation_turn:0", "reasoning:1", "conversation_turn:2"],
     );
   } finally {

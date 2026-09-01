@@ -20,7 +20,7 @@ function makeEvent(
   const ts = `2026-01-01T00:00:${String(n).padStart(2, "0")}.000Z`;
   return {
     id: `ev1-test-${n}`,
-    schema: "conversation-ledger/v1",
+    schema: "annals/v1",
     kind: "conversation_turn",
     occurred_at: ts,
     recorded_at: ts,
@@ -28,7 +28,7 @@ function makeEvent(
       ? { type: "human", ...(opts.display ? { display: opts.display } : {}) }
       : { type: "agent", ...(opts.modelId ? { id: opts.modelId } : {}) },
     producer: { tool: "test", source: "codex", session_id: "test-session" },
-    conversation: { id: "codex:test-session", seq: n },
+    stream: { id: "codex:test-session", seq: n },
     content,
   };
 }
