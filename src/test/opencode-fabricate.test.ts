@@ -1,7 +1,11 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { appendEvents } from "conversation-ledger";
-import { buildImportPayload, resolveModel } from "../targets/opencode.js";
+import {
+  buildImportPayload,
+  modelSubstitutionNote,
+  resolveModel,
+} from "../targets/opencode.js";
 import { listConversations } from "../conversations.js";
 import { cleanupRepo, makeTempRepo, seedConversation } from "./helpers.js";
 
@@ -343,16 +347,19 @@ test("the session dispatches with a provider opencode can resolve, never turnbri
   }
 });
 
-test("a substituted model is disclosed in the import notice", async () => {
-  // Provenance cannot live in providerID (a dispatch field), so it lives here.
+test("a substituted model is disclosed to the user, not injected into model context", async () => {
   const { payload, cleanup } = await payloadFor([
     { role: "user", blocks: [{ type: "text", text: "hi" }] },
     { role: "assistant", blocks: [{ type: "text", text: "hello" }] },
   ]);
   try {
     const notice = payload.messages[0]!.parts[0]!.text ?? "";
-    assert.match(notice, /produced by claude-test/);
-    assert.match(notice, /continues with ds4\/deepseek-v4-flash/);
+    assert.doesNotMatch(notice, /claude-test/);
+    assert.doesNotMatch(notice, /continues with/);
+    assert.equal(
+      modelSubstitutionNote(OPTS.model),
+      "opencode cannot resolve claude-test; the bridged session runs on ds4/deepseek-v4-flash",
+    );
   } finally {
     await cleanup();
   }

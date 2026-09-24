@@ -161,6 +161,24 @@ function eligibleReasoning(summary: ConversationSummary, replayReasoning: boolea
   return summary.events.filter((e) => e.kind === "reasoning" && e.producer.source === "codex");
 }
 
+/** Human-facing disclosure for source model provenance Codex cannot store. */
+export function modelDropNote(summary: ConversationSummary): string | null {
+  const models: string[] = [];
+  for (const event of summary.events) {
+    if (event.actor.type !== "agent" || !event.producer.model) continue;
+    const model =
+      event.producer.provider && !event.producer.model.includes("/")
+        ? `${event.producer.provider}/${event.producer.model}`
+        : event.producer.model;
+    if (!models.includes(model)) models.push(model);
+  }
+  if (models.length === 0) return null;
+  return (
+    `source history names model${models.length === 1 ? "" : "s"} ${models.join(", ")}; ` +
+    "Codex has no per-turn model field, so the resumed session uses Codex's configured model"
+  );
+}
+
 /** The verbatim `{type: "response_item", payload: {type: "reasoning", ...}}` line, if shaped as expected. */
 function reasoningRolloutLine(event: EvidenceEvent, now: Date): RolloutLine | null {
   const line = event.raw?.data as { type?: unknown; payload?: unknown } | undefined;
@@ -327,6 +345,8 @@ export const codexTarget: TargetAdapter = {
       `fabricated Codex session ${sessionId} from ${cliLabel(summary.source)} history (${summary.turnCount} turns)`,
       `rollout file: ${path} (${formatSize(transcriptSize(body))})`,
     );
+    const droppedModelNote = modelDropNote(summary);
+    if (droppedModelNote) notes.push(droppedModelNote);
     const replayCount = eligibleReasoning(summary, opts.replayReasoning).length;
     if (replayCount > 0) {
       notes.push(

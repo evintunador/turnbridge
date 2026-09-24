@@ -113,11 +113,20 @@ interface ImportPart {
  * session that renders perfectly and cannot be continued. Provenance for a
  * substituted model lives in the import notice instead.
  */
-interface ResolvedModel {
+export interface ResolvedModel {
   providerID: string;
   modelID: string;
   /** Source model ids opencode could not resolve, disclosed in the notice. */
   substitutedFrom: string[];
+}
+
+/** Human-facing disclosure for a dispatch-model substitution. */
+export function modelSubstitutionNote(model: ResolvedModel): string | null {
+  if (model.substitutedFrom.length === 0) return null;
+  return (
+    `opencode cannot resolve ${model.substitutedFrom.join(", ")}; the bridged session runs on ` +
+    `${model.providerID}/${model.modelID}`
+  );
 }
 
 /**
@@ -422,19 +431,10 @@ export function buildImportPayload(
   // it just ahead of the oldest turn is what puts it where it reads as a
   // preamble; nothing about resume depends on the notice being newest.
   const noticeMs = earliestEventMs(summary, now) - 1;
-  // The bridge changed models unless opencode happened to resolve the source
-  // id, and the notice is where that is disclosed — `providerID` cannot carry
-  // it (see ResolvedModel).
-  const substitution =
-    model.substitutedFrom.length > 0
-      ? `The turns below were produced by ${model.substitutedFrom.join(", ")}; this session ` +
-        `continues with ${model.providerID}/${model.modelID}, which is what opencode can run here. `
-      : "";
   const noticeText =
     `[turnbridge import notice] This conversation was imported from ${cliLabel(summary.source)}. ` +
     "The history below is the literal visible transcript. Past tool calls are replayed as history " +
     "records, not as calls to re-run. " +
-    substitution +
     (replayCount > 0
       ? `${replayCount} visible-thinking block(s) are replayed as reasoning; hidden reasoning and ` +
         "provider-private state were not transferred."
@@ -619,12 +619,8 @@ export const opencodeTarget: TargetAdapter = {
         "opencode",
       );
     }
-    if (model.substitutedFrom.length > 0) {
-      notes.push(
-        `opencode cannot resolve ${model.substitutedFrom.join(", ")}; the bridged session runs on ` +
-          `${model.providerID}/${model.modelID} and the import notice says so`,
-      );
-    }
+    const substitutionNote = modelSubstitutionNote(model);
+    if (substitutionNote) notes.push(substitutionNote);
 
     const sessionId = `ses_tb_${randomUUID()}`;
     const now = new Date();
