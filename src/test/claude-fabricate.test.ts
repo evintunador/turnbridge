@@ -26,8 +26,18 @@ test("builds a parentUuid-chained session with timestamps and full envelopes", a
       },
     ]);
     const [summary] = await listConversations(repo, { all: true });
-    const lines = buildSessionLines(summary!, NEW_ID, "/work/dir", "2.1.215", new Date());
+    const importedSourceEventIds: string[] = [];
+    const lines = buildSessionLines(
+      summary!,
+      NEW_ID,
+      "/work/dir",
+      "2.1.215",
+      new Date(),
+      importedSourceEventIds,
+    );
     const convo = conversationLines(lines);
+
+    assert.deepEqual(importedSourceEventIds, summary!.events.map((event) => event.id));
 
     // import notice + two turns
     assert.equal(convo.length, 3);

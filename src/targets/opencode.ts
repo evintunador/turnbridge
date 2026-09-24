@@ -429,6 +429,8 @@ export interface ImportPayloadOptions {
   model: ResolvedModel;
   /** Git sha for the step parts, as native sessions carry. Omitted if unknown. */
   snapshot?: string | undefined;
+  /** Receives ids of source events that produced an imported message. */
+  importedSourceEventIds?: string[] | undefined;
 }
 
 /**
@@ -442,7 +444,17 @@ export function buildImportPayload(
   summary: ConversationSummary,
   opts: ImportPayloadOptions,
 ): Record<string, unknown> {
-  const { sessionId, cwd, version, projectId, now, replayReasoning, model, snapshot } = opts;
+  const {
+    sessionId,
+    cwd,
+    version,
+    projectId,
+    now,
+    replayReasoning,
+    model,
+    snapshot,
+    importedSourceEventIds,
+  } = opts;
   const nowMs = now.getTime();
   const replayCount = countReplayedReasoning(summary, replayReasoning);
 
@@ -509,7 +521,18 @@ export function buildImportPayload(
       paired,
       replayReasoning,
     });
-    if (parts.length === 0) continue;
+    if (parts.length === 0) {
+      // A paired result is represented inside its earlier tool-call part, so
+      // this event contributed content even though it needs no message here.
+      const foldedIntoCall = content.blocks.some(
+        (block) =>
+          block.type === "tool_result" &&
+          typeof block.tool_use_id === "string" &&
+          paired.has(block.tool_use_id),
+      );
+      if (foldedIntoCall) importedSourceEventIds?.push(event.id);
+      continue;
+    }
 
     const info: Record<string, unknown> = {
       role,
@@ -541,6 +564,7 @@ export function buildImportPayload(
       : parts;
 
     messages.push({ info, parts: wrapped });
+    importedSourceEventIds?.push(event.id);
   }
 
   return {
@@ -646,6 +670,7 @@ export const opencodeTarget: TargetAdapter = {
 
     const sessionId = `ses_tb_${randomUUID()}`;
     const now = new Date();
+    const importedSourceEventIds: string[] = [];
     const payload = buildImportPayload(summary, {
       sessionId,
       cwd,
@@ -655,6 +680,7 @@ export const opencodeTarget: TargetAdapter = {
       replayReasoning: opts.replayReasoning,
       model,
       snapshot: headSnapshot(cwd),
+      importedSourceEventIds,
     });
 
     const dir = join(configDir(), "imports");
@@ -702,6 +728,7 @@ export const opencodeTarget: TargetAdapter = {
       // the id opencode actually stored, so the lineage record names the
       // session the user will be continuing in
       fabricatedConversationId: `opencode:${importedId}`,
+      importedSourceEventIds,
     };
   },
 

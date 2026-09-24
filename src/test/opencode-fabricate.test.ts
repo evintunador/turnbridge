@@ -73,7 +73,12 @@ function blockDraft(conversationId: string, seq: number, role: string, blocks: u
 async function payloadFor(
   blocks: Array<{ role: string; blocks: unknown[] }>,
   overrides: Partial<typeof OPTS> = {},
-): Promise<{ payload: Payload; cleanup: () => Promise<void> }> {
+): Promise<{
+  payload: Payload;
+  importedSourceEventIds: string[];
+  sourceEventIds: string[];
+  cleanup: () => Promise<void>;
+}> {
   const repo = await makeTempRepo();
   const id = `claude-code:${SID}`;
   await appendEvents(
@@ -81,8 +86,18 @@ async function payloadFor(
     blocks.map((b, i) => blockDraft(id, i, b.role, b.blocks)),
   );
   const [summary] = await listConversations(repo, { all: true });
-  const payload = buildImportPayload(summary!, { ...OPTS, ...overrides }) as unknown as Payload;
-  return { payload, cleanup: () => cleanupRepo(repo) };
+  const importedSourceEventIds: string[] = [];
+  const payload = buildImportPayload(summary!, {
+    ...OPTS,
+    ...overrides,
+    importedSourceEventIds,
+  }) as unknown as Payload;
+  return {
+    payload,
+    importedSourceEventIds,
+    sourceEventIds: summary!.events.map((event) => event.id),
+    cleanup: () => cleanupRepo(repo),
+  };
 }
 
 test("builds a session envelope opencode's importer accepts", async () => {
@@ -93,7 +108,13 @@ test("builds a session envelope opencode's importer accepts", async () => {
       { role: "assistant", text: "Done, retries three times.", seq: 1 },
     ]);
     const [summary] = await listConversations(repo, { all: true });
-    const payload = buildImportPayload(summary!, OPTS) as unknown as Payload;
+    const importedSourceEventIds: string[] = [];
+    const payload = buildImportPayload(summary!, {
+      ...OPTS,
+      importedSourceEventIds,
+    }) as unknown as Payload;
+
+    assert.deepEqual(importedSourceEventIds, summary!.events.map((event) => event.id));
 
     assert.equal(payload.info["id"], NEW_ID);
     assert.equal(payload.info["directory"], "/work/dir");
@@ -232,7 +253,7 @@ test("tool parts carry every key the importer requires", async () => {
 });
 
 test("a paired tool result rides in its call's state.output, exactly once", async () => {
-  const { payload, cleanup } = await payloadFor([
+  const { payload, importedSourceEventIds, sourceEventIds, cleanup } = await payloadFor([
     { role: "user", blocks: [{ type: "text", text: "fix the typo" }] },
     {
       role: "assistant",
@@ -244,6 +265,7 @@ test("a paired tool result rides in its call's state.output, exactly once", asyn
     },
   ]);
   try {
+    assert.deepEqual(importedSourceEventIds, sourceEventIds);
     const parts = payload.messages.flatMap((m) => m.parts);
     const tool = parts.find((p) => p.type === "tool")!;
     assert.equal(tool.state!["output"], "Applied 1 edit");

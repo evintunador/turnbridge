@@ -154,6 +154,7 @@ export function buildSessionLines(
   cwd: string,
   version: string,
   now: Date,
+  importedSourceEventIds?: string[],
 ): FabricatedLine[] {
   const specs: LineSpec[] = [
     {
@@ -196,6 +197,7 @@ export function buildSessionLines(
       spec.model = event.producer.model;
     }
     specs.push(spec);
+    importedSourceEventIds?.push(event.id);
   }
 
   const lines: SessionLine[] = [];
@@ -275,7 +277,15 @@ export const claudeCodeTarget: TargetAdapter = {
     const dir = join(projectsDir(), encodeProjectDir(cwd));
     await mkdir(dir, { recursive: true });
     const path = join(dir, `${sessionId}.jsonl`);
-    const lines = buildSessionLines(summary, sessionId, cwd, version, new Date());
+    const importedSourceEventIds: string[] = [];
+    const lines = buildSessionLines(
+      summary,
+      sessionId,
+      cwd,
+      version,
+      new Date(),
+      importedSourceEventIds,
+    );
     const body = lines.map((l) => JSON.stringify(l)).join("\n") + "\n";
     await writeFile(path, body);
 
@@ -289,6 +299,7 @@ export const claudeCodeTarget: TargetAdapter = {
       cwd,
       notes,
       fabricatedConversationId: `claude-code:${sessionId}`,
+      importedSourceEventIds,
     };
   },
 

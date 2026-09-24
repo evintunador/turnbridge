@@ -199,6 +199,7 @@ export function buildRolloutLines(
   cliVersion: string,
   now: Date,
   replayReasoning = true,
+  importedSourceEventIds?: string[],
 ): RolloutLine[] {
   const nowIso = now.toISOString();
   const replayCount = eligibleReasoning(summary, replayReasoning).length;
@@ -243,11 +244,15 @@ export function buildRolloutLines(
     if (event.kind === "reasoning") {
       if (!replayReasoning || event.producer.source !== "codex") continue;
       const line = reasoningRolloutLine(event, now);
-      if (line) lines.push(line);
+      if (line) {
+        lines.push(line);
+        importedSourceEventIds?.push(event.id);
+      }
       continue;
     }
     const content = turnContent(event);
     if (!content) continue;
+    const lineCountBefore = lines.length;
     const ts = normalizeTimestamp(event.occurred_at, now);
     const role = event.actor.type === "human" ? "user" : "assistant";
 
@@ -293,6 +298,7 @@ export function buildRolloutLines(
       prose.push(foldBlock(block));
     }
     flushProse();
+    if (lines.length > lineCountBefore) importedSourceEventIds?.push(event.id);
   }
   return lines;
 }
@@ -337,7 +343,16 @@ export const codexTarget: TargetAdapter = {
     const dir = join(sessionsDir(), datePath);
     await mkdir(dir, { recursive: true });
     const path = join(dir, `rollout-${stamp}-${sessionId}.jsonl`);
-    const lines = buildRolloutLines(summary, sessionId, cwd, version, now, opts.replayReasoning);
+    const importedSourceEventIds: string[] = [];
+    const lines = buildRolloutLines(
+      summary,
+      sessionId,
+      cwd,
+      version,
+      now,
+      opts.replayReasoning,
+      importedSourceEventIds,
+    );
     const body = lines.map((l) => JSON.stringify(l)).join("\n") + "\n";
     await writeFile(path, body);
 
@@ -361,6 +376,7 @@ export const codexTarget: TargetAdapter = {
       cwd,
       notes,
       fabricatedConversationId: `codex:${sessionId}`,
+      importedSourceEventIds,
     };
   },
 
