@@ -9,6 +9,7 @@ import { binaryOnPath } from "../launch.js";
 import { configDir } from "../config.js";
 import {
   cliLabel,
+  importSourceLabel,
   turnContent,
   type ConversationSummary,
   type TurnBlock,
@@ -466,7 +467,7 @@ export function buildImportPayload(
   // preamble; nothing about resume depends on the notice being newest.
   const noticeMs = earliestEventMs(summary, now) - 1;
   const noticeText =
-    `[turnbridge import notice] This conversation was imported from ${cliLabel(summary.source)}. ` +
+    `[turnbridge import notice] This conversation was imported from ${importSourceLabel(summary)}. ` +
     "The history below is the literal visible transcript. Past tool calls are replayed as history " +
     "records, not as calls to re-run. " +
     (replayCount > 0

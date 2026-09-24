@@ -23,29 +23,21 @@ must import the reader rather than parse `content` themselves. The annals
 filters needed by consumers (`kind: string | string[]`, `tool`, and `linkRel`)
 are already available through cledger's unchanged public read surface.
 
-## B. Stays with us: still design-entangled
+## B. Remaining investigation
 
-Not ready for handoff — each is blocked on a decision in the companion docs.
+Per-turn origin rendering, exact `source_event_ids`, producer model/provider
+provenance, and terminal-only degradation disclosures shipped in September
+2026. Multi-hop rendering follows the decided **as-it-would-have-been** policy:
+turnbridge removes its own transport artifacts and renders each event from its
+recorded origin, falling back to the captured copy with a terminal disclosure
+when the original is unavailable.
 
-- **Per-turn origin rendering** (LINEAGE_AND_COMPOUNDING §3, §3a). Blocked on
-  the as-recorded vs. as-it-would-have-been call, and on adding
-  `source_event_ids` to the `continuation` payload first, without which the
-  walk cannot resolve a turn to its origin precisely (fabrication breaks
-  positional correspondence three ways).
-- **Move human-facing disclosure out of the transcript into `plan.notes`**,
-  which already prints to the terminal and never enters model context. Applies
-  to model substitution, ancestor-unavailable, and size reporting. The import
-  notice is the one disclosure that genuinely belongs in context.
 - **Probe whether Claude's `system` / `attachment` line types reach model
   context** (`docs/specs/claude-session-format.md:74`, `:196`). The two specs
   disagree: claude-session-format calls attachments "purely informational, not
   needed for resume"; cledger's `context_injection` describes them as material
   inserted into the model's context. If they do reach context, the import
-  notice stops being a counterfeit user turn.
-- **Read `producer.model` / `producer.provider`** instead of `actor.id`
-  (LINEAGE_AND_COMPOUNDING §1). Independent of everything else, small, and
-  strictly better input for opencode's provider resolution, which currently
-  guesses by string-splitting the model id.
+  notice can stop being a counterfeit user turn.
 
 ---
 

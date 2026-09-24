@@ -7,7 +7,13 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import { bootstrapPrompt } from "../bootstrap.js";
 import { binaryOnPath } from "../launch.js";
-import { cliLabel, turnContent, type ConversationSummary, type TurnBlock } from "../types.js";
+import {
+  cliLabel,
+  importSourceLabel,
+  turnContent,
+  type ConversationSummary,
+  type TurnBlock,
+} from "../types.js";
 import { FabricationUnsupportedError, type LaunchPlan, type TargetAdapter } from "./types.js";
 
 /**
@@ -172,7 +178,7 @@ export function buildSessionLines(
         {
           type: "text",
           text:
-            `[turnbridge import notice] This conversation was imported from ${cliLabel(summary.source)}. ` +
+            `[turnbridge import notice] This conversation was imported from ${importSourceLabel(summary)}. ` +
             "The history below is the literal visible transcript; hidden reasoning and provider-private " +
             "state were not transferred, and historical tool calls are context only.",
         },

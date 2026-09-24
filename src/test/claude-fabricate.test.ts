@@ -26,6 +26,7 @@ test("builds a parentUuid-chained session with timestamps and full envelopes", a
       },
     ]);
     const [summary] = await listConversations(repo, { all: true });
+    summary!.lineageSources = ["opencode", "codex"];
     const importedSourceEventIds: string[] = [];
     const lines = buildSessionLines(
       summary!,
@@ -55,7 +56,7 @@ test("builds a parentUuid-chained session with timestamps and full envelopes", a
     }
 
     assert.equal(convo[0]!.type, "user");
-    assert.match(JSON.stringify(convo[0]!.message), /imported from Codex/);
+    assert.match(JSON.stringify(convo[0]!.message), /imported from OpenCode → Codex/);
 
     const assistant = convo[2]!;
     assert.equal(assistant.type, "assistant");

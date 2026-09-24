@@ -1,6 +1,7 @@
 # Multi-hop lineage and compounding degradation
 
-**Status:** design note, 2026-08-13, revised 2026-08-23. Companion to
+**Status:** implemented, 2026-09-23; design note written 2026-08-13 and revised
+2026-08-23. Companion to
 [POLICY_SPLIT.md](POLICY_SPLIT.md), which asked whether the fabrication tier
 model covers capture as well as write. This is that question followed all the
 way down: it turns out to be a three-repo architecture question spanning
@@ -226,7 +227,7 @@ unique choice that never renders from a copy when an original exists.
 
 ### The remaining decisions, which are real
 
-**(i) As-recorded, or as-it-would-have-been?** This is the genuine fork. The
+**(i) As-recorded, or as-it-would-have-been?** This was the genuine fork. The
 human at hop 3 *actually saw* `[visible thinking]`-folded text, and may have
 replied to it ("your reasoning above about X is wrong"). Re-sourcing the
 Claude original puts content in front of the model that was not in the session
@@ -234,7 +235,7 @@ the human experienced. Reconstructing "the conversation as recorded" and
 "the conversation as it would have been without transport damage" are
 different artifacts, and *most faithful* is ambiguous between them.
 
-Leaning: **as-it-would-have-been.** PRODUCT_INTENT says turnbridge moves the
+Decision: **as-it-would-have-been.** PRODUCT_INTENT says turnbridge moves the
 literal record of the work; the fold markers are transport artifacts turnbridge
 itself introduced, never content anyone authored. Restoring them is undoing our
 own damage, not inventing history. But it should be a stated decision, because

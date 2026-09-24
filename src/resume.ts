@@ -3,6 +3,7 @@ import { writeBootstrapTranscript } from "./bootstrap.js";
 import { loadConfig, saveConfig } from "./config.js";
 import { listConversations } from "./conversations.js";
 import { recordContinuation, readLineage, type Lineage } from "./lineage.js";
+import { resolveLineageHistory } from "./lineage-resolution.js";
 import { runLaunchPlan } from "./launch.js";
 import { withLedgerNotices } from "./ledger-io.js";
 import { confirm, pickFromList } from "./picker.js";
@@ -104,22 +105,19 @@ async function buildPlan(
   cwd: string,
   useBootstrap: boolean,
   lineage: Lineage,
+  availableConversations: ConversationSummary[],
   replayReasoning: boolean,
 ): Promise<LaunchPlan> {
   if (target.name === summary.source && !useBootstrap) {
     return target.nativeResume(summary.sessionId, cwd);
   }
+  const history = lineage.parentOf.has(summary.id)
+    ? resolveLineageHistory(summary, availableConversations, lineage)
+    : { summary, notes: [] };
   if (!useBootstrap) {
     try {
-      const plan = await target.fabricate(summary, cwd, { replayReasoning });
-      // re-bridging a conversation that already embeds imported history
-      // re-copies that history into the new session — functional, just larger
-      if (lineage.parentOf.has(summary.id)) {
-        plan.notes.push(
-          "note: this conversation already contains history imported by turnbridge; " +
-            "bridging it again re-copies that history into the new session",
-        );
-      }
+      const plan = await target.fabricate(history.summary, cwd, { replayReasoning });
+      plan.notes.push(...history.notes);
       if (plan.fabricatedConversationId) {
         const lastSeq = summary.events[summary.events.length - 1]?.stream?.seq ?? 0;
         await recordContinuation(repo, {
@@ -139,8 +137,9 @@ async function buildPlan(
       );
     }
   }
-  const transcript = await writeBootstrapTranscript(summary);
-  const plan = target.bootstrap(summary, cwd, transcript.path);
+  const transcript = await writeBootstrapTranscript(history.summary);
+  const plan = target.bootstrap(history.summary, cwd, transcript.path);
+  plan.notes.push(...history.notes);
   plan.notes.push(
     `transcript is ${formatSize(transcript.size)}; fitting it is the target CLI's own concern ` +
       "(both apply their own compaction or truncation), so this is reported, not enforced",
@@ -159,13 +158,20 @@ export async function resumeCommand(flags: ResumeFlags): Promise<number> {
   // Sequential, not Promise.all: each ledger read may run lazy maintenance
   // (notes merge, re-anchor append) — concurrent calls race on the same
   // refs and cursor file. The second read's maintenance pass is a no-op.
-  const [conversations, lineage] = await withLedgerNotices(async () => {
+  const [conversations, lineage, availableConversations] = await withLedgerNotices(async () => {
     const convs = await listConversations(repo, {
       all: flags.all ?? false,
       user: identity.email ?? undefined,
       anyCommit: flags.anyCommit ?? false,
     });
-    return [convs, await readLineage(repo, flags.anyCommit ?? false)] as const;
+    const graph = await readLineage(repo, flags.anyCommit ?? false);
+    const available = flags.all
+      ? convs
+      : await listConversations(repo, {
+          all: true,
+          anyCommit: flags.anyCommit ?? false,
+        });
+    return [convs, graph, available] as const;
   });
 
   if (conversations.length === 0) {
@@ -209,6 +215,7 @@ export async function resumeCommand(flags: ResumeFlags): Promise<number> {
     cwd,
     flags.bootstrap ?? false,
     lineage,
+    availableConversations,
     replayReasoning,
   );
   return runLaunchPlan(plan);
