@@ -126,6 +126,7 @@ async function buildPlan(
           source: summary.id,
           target: plan.fabricatedConversationId,
           importedThroughSeq: lastSeq,
+          sourceEventIds: plan.importedSourceEventIds ?? [],
           targetCli: target.name,
           version: turnbridgeVersion(),
         });

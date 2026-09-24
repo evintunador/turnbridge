@@ -10,6 +10,8 @@ export interface ContinuationRecord {
   target: string;
   /** Highest source seq copied into the target at bridge time. */
   importedThroughSeq: number;
+  /** Exact ordered source events copied, absent on legacy continuation records. */
+  sourceEventIds?: string[];
   /** Target CLI the bridge fabricated into. */
   targetCli: string;
   occurredAt: string;
@@ -45,6 +47,7 @@ export async function recordContinuation(
         source_conversation: rec.source,
         target_conversation: rec.target,
         imported_through_seq: rec.importedThroughSeq,
+        ...(rec.sourceEventIds ? { source_event_ids: rec.sourceEventIds } : {}),
         target_cli: rec.targetCli,
       },
     },
@@ -57,10 +60,14 @@ function parseRecord(event: EvidenceEvent): ContinuationRecord | null {
   const source = c["source_conversation"];
   const target = c["target_conversation"];
   if (typeof source !== "string" || typeof target !== "string") return null;
+  const sourceEventIds = c["source_event_ids"];
   return {
     source,
     target,
     importedThroughSeq: typeof c["imported_through_seq"] === "number" ? c["imported_through_seq"] : 0,
+    ...(Array.isArray(sourceEventIds) && sourceEventIds.every((id) => typeof id === "string")
+      ? { sourceEventIds: [...sourceEventIds] as string[] }
+      : {}),
     targetCli: typeof c["target_cli"] === "string" ? c["target_cli"] : "unknown",
     occurredAt: event.occurred_at,
   };
@@ -69,6 +76,7 @@ function parseRecord(event: EvidenceEvent): ContinuationRecord | null {
 export async function readLineage(repo: RepoInfo, anyCommit = false): Promise<Lineage> {
   const events = await readEvents(repo, {
     kind: CONTINUATION_KIND,
+    tool: "turnbridge",
     ...(anyCommit ? {} : { reachableFrom: "HEAD" }),
   });
   const parentOf = new Map<string, ContinuationRecord>();

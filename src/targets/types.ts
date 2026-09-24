@@ -14,6 +14,8 @@ export interface LaunchPlan {
    * stable anchor for recording source→target lineage.
    */
   fabricatedConversationId?: string;
+  /** Ordered ids of source events the fabricated target actually contains. */
+  importedSourceEventIds?: string[];
 }
 
 export interface TargetAdapter {

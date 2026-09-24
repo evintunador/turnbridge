@@ -16,7 +16,18 @@ test("builds a minimal valid rollout: session_meta + message response_items", as
       { role: "assistant", text: "Done, retries three times.", seq: 1 },
     ]);
     const [summary] = await listConversations(repo, { all: true });
-    const lines = buildRolloutLines(summary!, NEW_ID, "/work/dir", "0.144.6", new Date());
+    const importedSourceEventIds: string[] = [];
+    const lines = buildRolloutLines(
+      summary!,
+      NEW_ID,
+      "/work/dir",
+      "0.144.6",
+      new Date(),
+      true,
+      importedSourceEventIds,
+    );
+
+    assert.deepEqual(importedSourceEventIds, summary!.events.map((event) => event.id));
 
     const meta = lines[0]!;
     assert.equal(meta.type, "session_meta");

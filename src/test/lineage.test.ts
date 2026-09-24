@@ -15,6 +15,7 @@ test("records and reads a continuation edge in both directions", async () => {
       source: SRC,
       target: TGT,
       importedThroughSeq: 41,
+      sourceEventIds: ["ev2-source-a", "ev2-source-b"],
       targetCli: "codex",
       version: "0.1.0",
     });
@@ -23,6 +24,7 @@ test("records and reads a continuation edge in both directions", async () => {
     assert.ok(parent);
     assert.equal(parent!.source, SRC);
     assert.equal(parent!.importedThroughSeq, 41);
+    assert.deepEqual(parent!.sourceEventIds, ["ev2-source-a", "ev2-source-b"]);
     assert.equal(lineage.childrenOf.get(SRC)!.length, 1);
   } finally {
     await cleanupRepo(repo);
@@ -48,6 +50,7 @@ test("annotates rows: source shows bridged-to, target shows continued-from", asy
     });
 
     const lineage = await readLineage(repo);
+    assert.equal(lineage.parentOf.get(TGT)!.sourceEventIds, undefined);
     const convs = await listConversations(repo, { all: true });
     const bySource = new Map(convs.map((c) => [c.id, c]));
 
