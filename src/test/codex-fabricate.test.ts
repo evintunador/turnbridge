@@ -1,12 +1,28 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { appendEvents } from "conversation-ledger";
-import { buildRolloutLines } from "../targets/codex.js";
+import { buildRolloutLines, modelDropNote } from "../targets/codex.js";
 import { listConversations } from "../conversations.js";
 import { cleanupRepo, makeTempRepo, reasoningEventDraft, seedConversation } from "./helpers.js";
 
 const SID = "44444444-4444-4444-8444-444444444444";
 const NEW_ID = "99999999-9999-4999-8999-999999999999";
+
+test("source model loss is disclosed to the user outside model context", () => {
+  const summary = {
+    events: [
+      {
+        actor: { type: "agent" },
+        producer: { model: "claude-test", provider: "anthropic" },
+      },
+    ],
+  } as unknown as Parameters<typeof modelDropNote>[0];
+  assert.equal(
+    modelDropNote(summary),
+    "source history names model anthropic/claude-test; Codex has no per-turn model field, " +
+      "so the resumed session uses Codex's configured model",
+  );
+});
 
 test("builds a minimal valid rollout: session_meta + message response_items", async () => {
   const repo = await makeTempRepo();

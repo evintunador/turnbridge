@@ -39,6 +39,9 @@ export interface TurnSpec {
   email?: string;
   display?: string;
   occurredAt?: string;
+  actorId?: string;
+  model?: string;
+  provider?: string;
 }
 
 export function turnDraft(conversationId: string, source: string, spec: TurnSpec): EventDraft {
@@ -49,7 +52,7 @@ export function turnDraft(conversationId: string, source: string, spec: TurnSpec
         ...(spec.email ? { id: spec.email } : {}),
         ...(spec.display ? { display: spec.display } : {}),
       }
-    : { type: "agent", id: "test-model" };
+    : { type: "agent", id: spec.actorId ?? "test-model" };
   return {
     kind: "conversation_turn",
     occurred_at: spec.occurredAt ?? `2026-01-01T00:00:${String(spec.seq).padStart(2, "0")}.000Z`,
@@ -58,6 +61,9 @@ export function turnDraft(conversationId: string, source: string, spec: TurnSpec
       tool: "turnbridge-test",
       source,
       session_id: conversationId.split(":").slice(1).join(":"),
+      ...(!isHuman
+        ? { model: spec.model ?? "test-model", provider: spec.provider ?? "test-provider" }
+        : {}),
     },
     stream: { id: conversationId, seq: spec.seq },
     content: { role: spec.role, blocks: [{ type: "text", text: spec.text }] },

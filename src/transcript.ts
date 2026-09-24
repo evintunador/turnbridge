@@ -32,7 +32,7 @@ function roleHeading(event: EvidenceEvent, role: string): string {
     return `## User${event.actor.display ? ` (${event.actor.display})` : ""}`;
   }
   if (role === "tool_result") return "## Tool result";
-  return `## Assistant${event.actor.id ? ` (${event.actor.id})` : ""}`;
+  return `## Assistant${event.producer.model ? ` (${event.producer.model})` : ""}`;
 }
 
 /**

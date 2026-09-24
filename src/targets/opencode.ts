@@ -113,11 +113,20 @@ interface ImportPart {
  * session that renders perfectly and cannot be continued. Provenance for a
  * substituted model lives in the import notice instead.
  */
-interface ResolvedModel {
+export interface ResolvedModel {
   providerID: string;
   modelID: string;
   /** Source model ids opencode could not resolve, disclosed in the notice. */
   substitutedFrom: string[];
+}
+
+/** Human-facing disclosure for a dispatch-model substitution. */
+export function modelSubstitutionNote(model: ResolvedModel): string | null {
+  if (model.substitutedFrom.length === 0) return null;
+  return (
+    `opencode cannot resolve ${model.substitutedFrom.join(", ")}; the bridged session runs on ` +
+    `${model.providerID}/${model.modelID}`
+  );
 }
 
 /**
@@ -185,15 +194,27 @@ function stepFinishPart(sessionId: string, msgId: string, snapshot?: string): Im
   return part;
 }
 
-/** Distinct source model ids seen on agent turns, in first-seen order. */
-export function sourceModelIds(summary: ConversationSummary): string[] {
-  const ids: string[] = [];
+export interface SourceModel {
+  model: string;
+  /** Present only when the source stated it; never inferred from `model`. */
+  provider?: string | undefined;
+}
+
+/** Distinct source model provenance seen on agent turns, in first-seen order. */
+export function sourceModels(summary: ConversationSummary): SourceModel[] {
+  const models: SourceModel[] = [];
+  const seen = new Set<string>();
   for (const event of summary.events) {
     if (event.actor.type !== "agent") continue;
-    const id = event.actor.id;
-    if (id && !ids.includes(id)) ids.push(id);
+    const model = event.producer.model;
+    if (!model) continue;
+    const provider = event.producer.provider;
+    const key = `${provider ?? ""}\0${model}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    models.push(provider ? { model, provider } : { model });
   }
-  return ids;
+  return models;
 }
 
 /**
@@ -207,21 +228,31 @@ export function sourceModelIds(summary: ConversationSummary): string[] {
  * `available` is `provider/model` as `opencode models` prints it. Exported for
  * tests: the lookup is pure, only the listing shells out.
  */
-export function resolveModel(sourceIds: string[], available: string[]): ResolvedModel | null {
+export function resolveModel(sourceModels: SourceModel[], available: string[]): ResolvedModel | null {
   if (available.length === 0) return null;
   const split = (entry: string) => {
     const at = entry.indexOf("/");
     return { providerID: entry.slice(0, at), modelID: entry.slice(at + 1) };
   };
-  for (const id of sourceIds) {
-    // Either a fully-qualified `provider/model`, or a bare model id that is
-    // unambiguous across providers.
-    const exact = available.find((entry) => entry === id);
+  for (const source of sourceModels) {
+    const exact = available.find((entry) => {
+      const target = split(entry);
+      if (source.provider) {
+        return (
+          target.providerID === source.provider &&
+          (target.modelID === source.model || entry === source.model)
+        );
+      }
+      // A fully-qualified model value can match verbatim. A bare value cannot:
+      // choosing its provider would invent provenance the source did not state.
+      return entry === source.model;
+    });
     if (exact) return { ...split(exact), substitutedFrom: [] };
-    const byModel = available.filter((entry) => split(entry).modelID === id);
-    if (byModel.length === 1) return { ...split(byModel[0]!), substitutedFrom: [] };
   }
-  return { ...split(available[0]!), substitutedFrom: sourceIds };
+  const substitutedFrom = sourceModels.map(({ model, provider }) =>
+    provider && !model.includes("/") ? `${provider}/${model}` : model,
+  );
+  return { ...split(available[0]!), substitutedFrom };
 }
 
 function resultBody(block: TurnBlock): string {
@@ -422,19 +453,10 @@ export function buildImportPayload(
   // it just ahead of the oldest turn is what puts it where it reads as a
   // preamble; nothing about resume depends on the notice being newest.
   const noticeMs = earliestEventMs(summary, now) - 1;
-  // The bridge changed models unless opencode happened to resolve the source
-  // id, and the notice is where that is disclosed — `providerID` cannot carry
-  // it (see ResolvedModel).
-  const substitution =
-    model.substitutedFrom.length > 0
-      ? `The turns below were produced by ${model.substitutedFrom.join(", ")}; this session ` +
-        `continues with ${model.providerID}/${model.modelID}, which is what opencode can run here. `
-      : "";
   const noticeText =
     `[turnbridge import notice] This conversation was imported from ${cliLabel(summary.source)}. ` +
     "The history below is the literal visible transcript. Past tool calls are replayed as history " +
     "records, not as calls to re-run. " +
-    substitution +
     (replayCount > 0
       ? `${replayCount} visible-thinking block(s) are replayed as reasoning; hidden reasoning and ` +
         "provider-private state were not transferred."
@@ -611,7 +633,7 @@ export const opencodeTarget: TargetAdapter = {
     // unresolvable id is fatal to continuation rather than cosmetic. If we
     // cannot learn what this install can run, fabrication is not safe — fall
     // back to bootstrap instead of writing a session that cannot answer.
-    const model = resolveModel(sourceModelIds(summary), availableModels(cwd));
+    const model = resolveModel(sourceModels(summary), availableModels(cwd));
     if (!model) {
       throw new FabricationUnsupportedError(
         "could not list opencode models, so the fabricated session would have no provider " +
@@ -619,12 +641,8 @@ export const opencodeTarget: TargetAdapter = {
         "opencode",
       );
     }
-    if (model.substitutedFrom.length > 0) {
-      notes.push(
-        `opencode cannot resolve ${model.substitutedFrom.join(", ")}; the bridged session runs on ` +
-          `${model.providerID}/${model.modelID} and the import notice says so`,
-      );
-    }
+    const substitutionNote = modelSubstitutionNote(model);
+    if (substitutionNote) notes.push(substitutionNote);
 
     const sessionId = `ses_tb_${randomUUID()}`;
     const now = new Date();
