@@ -192,8 +192,8 @@ export function buildSessionLines(
       content: blocks,
       timestamp: normalizeTimestamp(event.occurred_at, now),
     };
-    if (type === "assistant" && event.actor.type === "agent" && event.actor.id) {
-      spec.model = event.actor.id;
+    if (type === "assistant" && event.actor.type === "agent" && event.producer.model) {
+      spec.model = event.producer.model;
     }
     specs.push(spec);
   }
