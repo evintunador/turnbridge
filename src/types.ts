@@ -37,6 +37,8 @@ export interface ConversationSummary {
   /** Distinct human actor ids (git emails); empty when captured pre-identity. */
   owners: string[];
   ownerDisplays: string[];
+  /** Root-to-selected CLI path when turnbridge reconstructed multi-hop history. */
+  lineageSources?: string[];
   /**
    * All turn events plus opaque `reasoning` events, in canonical order.
    * `turnContent` returns null for `reasoning` events, so consumers that
@@ -45,6 +47,12 @@ export interface ConversationSummary {
    * `event.kind === "reasoning"` explicitly.
    */
   events: EvidenceEvent[];
+}
+
+/** Label used by the one import notice emitted for a reconstructed history. */
+export function importSourceLabel(summary: ConversationSummary): string {
+  const sources = summary.lineageSources ?? [summary.source];
+  return sources.map(cliLabel).join(" → ");
 }
 
 /** One normalized content block inside a turn (subset turnbridge consumes). */

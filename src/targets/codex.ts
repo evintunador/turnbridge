@@ -8,7 +8,13 @@ import { bootstrapPrompt } from "../bootstrap.js";
 import { normalizeTimestamp } from "../timestamps.js";
 import { formatSize, transcriptSize } from "../transcript.js";
 import { binaryOnPath } from "../launch.js";
-import { cliLabel, turnContent, type ConversationSummary, type TurnBlock } from "../types.js";
+import {
+  cliLabel,
+  importSourceLabel,
+  turnContent,
+  type ConversationSummary,
+  type TurnBlock,
+} from "../types.js";
 import { FabricationUnsupportedError, type LaunchPlan, type TargetAdapter } from "./types.js";
 
 /**
@@ -208,7 +214,7 @@ export function buildRolloutLines(
   // records (history the model reads, never re-executed), except unpaired
   // results, which stay prose.
   const noticeText =
-    `[turnbridge import notice] This conversation was imported from ${cliLabel(summary.source)}. ` +
+    `[turnbridge import notice] This conversation was imported from ${importSourceLabel(summary)}. ` +
     "The history below is the literal visible transcript. Past tool calls are replayed as history " +
     "records, not as calls to re-run; tool results with no matching call appear as labeled text. " +
     (replayCount > 0

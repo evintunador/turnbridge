@@ -20,3 +20,4 @@ export {
   type TurnContent,
 } from "./types.js";
 export { loadConfig, saveConfig, configDir, type TurnbridgeConfig } from "./config.js";
+export { readLineage, type ContinuationRecord, type Lineage } from "./lineage.js";

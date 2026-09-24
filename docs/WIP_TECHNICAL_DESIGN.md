@@ -257,9 +257,10 @@ before broadening):
   when `event.producer.source === "codex"` — gated per-event, not
   per-conversation, even though today's data model (a `ConversationSummary`
   groups by one native session id, hence one source) makes that equivalent
-  to a per-conversation check in practice; genuine multi-hop carry-over
-  (reconstructing an ancestor hop's reasoning via the lineage chain when
-  re-bridging) is deliberately not built and stays a follow-up. Never
+  to a per-conversation check in practice. Multi-hop carry-over reconstructs
+  the prefix from the exact origin event ids recorded by each continuation,
+  so a later Codex target can replay an original Codex reasoning event rather
+  than a prose copy captured from an intermediate target. Never
   applies to a Claude Code target: foreign reasoning can't be forged as a
   native reasoning item, so the only real switch is whether provider-matched
   replay happens, not what it's coerced into — unreadable/foreign reasoning
