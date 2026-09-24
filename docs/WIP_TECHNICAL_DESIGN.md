@@ -248,11 +248,10 @@ before broadening):
   — Codex's `reasoning` items are ciphertext only OpenAI's servers can
   decrypt; conversation-ledger 0.10.0 preserves them losslessly and opaquely
   (`kind: "reasoning"`, ciphertext in `raw.data`, `content` a bare opacity
-  marker). `listConversations` (`src/conversations.ts`) now fetches
-  `reasoning` events alongside `conversation_turn`s — `readEvents`'s `kind`
-  filter is exact-match only, so it fetches unfiltered and narrows
-  client-side — and carries them through `ConversationSummary.events` in
-  seq order; `turnCount` still counts only visible turns.
+  marker). `listConversations` (`src/conversations.ts`) requests `reasoning`
+  alongside `conversation_turn` through annals' multi-kind read filter and
+  carries both through `ConversationSummary.events` in seq order;
+  `turnCount` still counts only visible turns.
   `src/targets/codex.ts`'s `buildRolloutLines` replays each reasoning
   event's verbatim `raw.data` response_item line at its correct seq position
   when `event.producer.source === "codex"` — gated per-event, not

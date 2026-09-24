@@ -33,20 +33,14 @@ function deriveTitle(events: EvidenceEvent[]): string {
   return "(no visible user message)";
 }
 
-/** Kinds turnbridge builds conversations from: visible turns plus opaque,
- * provider-encrypted reasoning (readEvents' `kind` filter is exact-match
- * only, so fetch everything and narrow here rather than issuing two reads). */
-function inScope(event: EvidenceEvent): boolean {
-  return event.kind === "conversation_turn" || event.kind === "reasoning";
-}
-
 export async function listConversations(
   repo: RepoInfo,
   opts: ListOptions = {},
 ): Promise<ConversationSummary[]> {
-  const events = (
-    await readEvents(repo, opts.anyCommit ? {} : { reachableFrom: "HEAD" })
-  ).filter(inScope);
+  const events = await readEvents(repo, {
+    ...(opts.anyCommit ? {} : { reachableFrom: "HEAD" }),
+    kind: ["conversation_turn", "reasoning"],
+  });
 
   const groups = new Map<string, EvidenceEvent[]>();
   for (const event of events) {

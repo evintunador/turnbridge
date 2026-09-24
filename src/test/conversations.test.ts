@@ -49,7 +49,17 @@ test("reasoning events ride along in seq order but never count as turns", async 
       { role: "user", text: "explain the retry logic", seq: 0, email: "me@x.com" },
       { role: "assistant", text: "It backs off exponentially.", seq: 2 },
     ]);
-    await appendEvents(repo, [reasoningEventDraft(`codex:${SID_A}`, "codex", { seq: 1 })]);
+    await appendEvents(repo, [
+      reasoningEventDraft(`codex:${SID_A}`, "codex", { seq: 1 }),
+      {
+        kind: "annotation",
+        occurred_at: "2026-01-01T00:00:01.750Z",
+        actor: { type: "system", id: "test" },
+        producer: { tool: "turnbridge-test", source: "codex" },
+        stream: { id: `codex:${SID_A}`, seq: 1 },
+        content: { text: "not conversation history" },
+      },
+    ]);
 
     const [summary] = await listConversations(repo, { all: true });
     assert.equal(summary!.turnCount, 2); // reasoning event excluded from the count

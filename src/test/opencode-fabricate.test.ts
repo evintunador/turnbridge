@@ -1,7 +1,11 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { appendEvents } from "conversation-ledger";
-import { buildImportPayload, resolveModel } from "../targets/opencode.js";
+import {
+  buildImportPayload,
+  modelSubstitutionNote,
+  resolveModel,
+} from "../targets/opencode.js";
 import { listConversations } from "../conversations.js";
 import { cleanupRepo, makeTempRepo, seedConversation } from "./helpers.js";
 
@@ -55,7 +59,12 @@ function blockDraft(conversationId: string, seq: number, role: string, blocks: u
       role === "user"
         ? { type: "human" as const, id: "me@x.com" }
         : { type: "agent" as const, id: "claude-test" },
-    producer: { tool: "turnbridge-test", source: "claude-code", session_id: SID },
+    producer: {
+      tool: "turnbridge-test",
+      source: "claude-code",
+      session_id: SID,
+      ...(role === "user" ? {} : { model: "claude-test", provider: "anthropic" }),
+    },
     stream: { id: conversationId, seq },
     content: { role, blocks },
   };
@@ -365,41 +374,47 @@ test("the session dispatches with a provider opencode can resolve, never turnbri
   }
 });
 
-test("a substituted model is disclosed in the import notice", async () => {
-  // Provenance cannot live in providerID (a dispatch field), so it lives here.
+test("a substituted model is disclosed to the user, not injected into model context", async () => {
   const { payload, cleanup } = await payloadFor([
     { role: "user", blocks: [{ type: "text", text: "hi" }] },
     { role: "assistant", blocks: [{ type: "text", text: "hello" }] },
   ]);
   try {
     const notice = payload.messages[0]!.parts[0]!.text ?? "";
-    assert.match(notice, /produced by claude-test/);
-    assert.match(notice, /continues with ds4\/deepseek-v4-flash/);
+    assert.doesNotMatch(notice, /claude-test/);
+    assert.doesNotMatch(notice, /continues with/);
+    assert.equal(
+      modelSubstitutionNote(OPTS.model),
+      "opencode cannot resolve claude-test; the bridged session runs on ds4/deepseek-v4-flash",
+    );
   } finally {
     await cleanup();
   }
 });
 
 test("a source model opencode can resolve is kept verbatim", async () => {
-  assert.deepEqual(resolveModel(["deepseek-v4-flash"], ["ds4/deepseek-v4-flash", "opencode/x"]), {
+  assert.deepEqual(resolveModel(
+    [{ model: "deepseek-v4-flash", provider: "ds4" }],
+    ["ds4/deepseek-v4-flash", "opencode/x"],
+  ), {
     providerID: "ds4",
     modelID: "deepseek-v4-flash",
     substitutedFrom: [],
   });
-  assert.deepEqual(resolveModel(["ds4/deepseek-v4-flash"], ["ds4/deepseek-v4-flash"]), {
+  assert.deepEqual(resolveModel([{ model: "ds4/deepseek-v4-flash" }], ["ds4/deepseek-v4-flash"]), {
     providerID: "ds4",
     modelID: "deepseek-v4-flash",
     substitutedFrom: [],
   });
-  // Ambiguous bare id: same model name under two providers falls through to
-  // substitution rather than guessing which provider was meant.
-  assert.deepEqual(resolveModel(["m"], ["a/m", "b/m"]), {
+  // Even a unique bare id is substituted: choosing its provider would invent
+  // provenance the source deliberately left unstated.
+  assert.deepEqual(resolveModel([{ model: "m" }], ["a/m"]), {
     providerID: "a",
     modelID: "m",
     substitutedFrom: ["m"],
   });
   // No models listed at all: the caller must not fabricate.
-  assert.equal(resolveModel(["m"], []), null);
+  assert.equal(resolveModel([{ model: "m", provider: "a" }], []), null);
 });
 
 test("assistant messages are wrapped in step-start … step-finish like native ones", async () => {

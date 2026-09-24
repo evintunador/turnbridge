@@ -17,7 +17,13 @@ test("builds a parentUuid-chained session with timestamps and full envelopes", a
   try {
     await seedConversation(repo, `codex:${SID}`, "codex", [
       { role: "user", text: "profile the slow endpoint", seq: 0, email: "me@x.com" },
-      { role: "assistant", text: "The N+1 query is the culprit.", seq: 1 },
+      {
+        role: "assistant",
+        text: "The N+1 query is the culprit.",
+        seq: 1,
+        actorId: "legacy-actor-model",
+        model: "stated-producer-model",
+      },
     ]);
     const [summary] = await listConversations(repo, { all: true });
     const importedSourceEventIds: string[] = [];
@@ -55,7 +61,7 @@ test("builds a parentUuid-chained session with timestamps and full envelopes", a
     assert.equal(assistant.type, "assistant");
     assert.equal(assistant.message["role"], "assistant");
     assert.equal(assistant.message["stop_reason"], "end_turn");
-    assert.equal(assistant.message["model"], "test-model");
+    assert.equal(assistant.message["model"], "stated-producer-model");
   } finally {
     await cleanupRepo(repo);
   }
