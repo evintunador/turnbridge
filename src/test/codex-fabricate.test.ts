@@ -178,7 +178,7 @@ function toolDraft(conversationId: string, seq: number, role: string, blocks: un
         ? { type: "human" as const, id: "me@x.com" }
         : { type: "agent" as const, id: "claude-test" },
     producer: { tool: "turnbridge-test", source: "claude-code", session_id: TOOL_SID },
-    conversation: { id: conversationId, seq },
+    stream: { id: conversationId, seq },
     content: { role, blocks },
   };
 }

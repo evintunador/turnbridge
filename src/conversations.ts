@@ -50,10 +50,10 @@ export async function listConversations(
 
   const groups = new Map<string, EvidenceEvent[]>();
   for (const event of events) {
-    if (!event.conversation?.id) continue;
-    const group = groups.get(event.conversation.id);
+    if (!event.stream?.id) continue;
+    const group = groups.get(event.stream.id);
     if (group) group.push(event);
-    else groups.set(event.conversation.id, [event]);
+    else groups.set(event.stream.id, [event]);
   }
 
   const summaries: ConversationSummary[] = [];

@@ -39,7 +39,7 @@ export async function recordContinuation(
       actor: { type: "system", id: "turnbridge" },
       producer: { tool: "turnbridge", version: rec.version, source: rec.targetCli },
       // belongs to the target conversation so it rides along with it
-      conversation: { id: rec.target, seq: 0 },
+      stream: { id: rec.target, seq: 0 },
       links: [{ rel: CONTINUES_REL, target: rec.source }],
       content: {
         source_conversation: rec.source,

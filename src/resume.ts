@@ -121,7 +121,7 @@ async function buildPlan(
         );
       }
       if (plan.fabricatedConversationId) {
-        const lastSeq = summary.events[summary.events.length - 1]?.conversation?.seq ?? 0;
+        const lastSeq = summary.events[summary.events.length - 1]?.stream?.seq ?? 0;
         await recordContinuation(repo, {
           source: summary.id,
           target: plan.fabricatedConversationId,
