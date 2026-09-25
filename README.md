@@ -24,6 +24,7 @@ turnbridge resume codex      # resume straight into Codex
 turnbridge resume claude     # resume straight into Claude Code
 turnbridge resume opencode   # resume straight into opencode
 turnbridge list              # print compatible conversations
+turnbridge records --help    # shared cledger records maintenance commands
 
 # options
 #   --all                   include collaborators' conversations
@@ -33,6 +34,30 @@ turnbridge list              # print compatible conversations
 
 # optional: make bare `claude --resume` / `codex resume` open the merged picker
 turnbridge shim install
+```
+
+`turnbridge records <command>` operates on the **shared cledger conversation
+records** at `refs/notes/conversation-ledger`, including turnbridge's
+continuation events. It uses cledger's exact Ledger factory; turnbridge has no
+separate notes ref, profile, transport hook, or `transport-push` entrypoint.
+`cledger` owns capture, hook installation (`cledger install all`), and notes
+transport. For example, `turnbridge records sync --fetch-only` fetches the
+shared records. `turnbridge records review`, `inspect`, `redact`, `allow`, and
+manual `reanchor` are human-only operations; run them yourself in a plain
+terminal. `turnbridge sync`, `review`, `inspect`, `redact`, `allow`, and
+`reanchor` are shortcuts to the same records dispatcher.
+
+For standalone annals maintenance, register cledger's existing namespace once:
+
+```sh
+annals profile add conversation-ledger \
+  --namespace conversation-ledger \
+  --incoming cledger-incoming \
+  --internal-env CLEDGER_INTERNAL \
+  --state-dir conversation-ledger \
+  --config-file .cledger.json \
+  --user-config-dir cledger \
+  --cli-name cledger
 ```
 
 Same-CLI selections use the CLI's native resume. Cross-CLI selections write a
