@@ -178,7 +178,10 @@ cannot catch every secret — review before sharing still matters); full
 histories can exceed the target's context (size is reported before launch);
 crashes mid-turn leave partial capture, which the ledger tolerates by design.
 
-## Roadmap
+## Implementation status and validation record
+
+Open project work is tracked in the [roadmap](ROADMAP.md). This section keeps
+the decisions and validation history that explain the current implementation.
 
 Toward an npm release (decided 2026-07-21; deepen the two existing targets
 before broadening):
