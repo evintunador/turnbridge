@@ -68,7 +68,9 @@ transcript, same as always.
 Opt out with `--no-reasoning-replay`, or persistently via
 `{"reasoningReplay": false}` in `~/.turnbridge/config.json`.
 
-See [product intent](docs/PRODUCT_INTENT.md) and the [WIP technical design](docs/WIP_TECHNICAL_DESIGN.md).
+See [product intent](docs/PRODUCT_INTENT.md), the
+[roadmap](docs/ROADMAP.md), and the
+[WIP technical design](docs/WIP_TECHNICAL_DESIGN.md).
 
 ## Development
 
