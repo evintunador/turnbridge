@@ -74,6 +74,16 @@ project (turnbridge looks that up; if the directory isn't a registered opencode
 project the session lands in the `global` one and is listed everywhere). And
 `turnbridge shim install` writes no opencode shim — opencode has no bare
 "open my sessions" command to intercept, since `-s` always takes an id.
+When the source model isn't one opencode can run, the bridged session uses
+the model opencode would start a new session with (your configured `model`,
+including `OPENCODE_CONFIG_CONTENT`), and the import notice says so.
+
+Bridging into opencode right after an opencode session ends can fail with
+`database is locked`: all opencode processes share one SQLite database, and
+cledger is still capturing the session that just ended. turnbridge then
+falls back to a bootstrap session. Wait a few seconds and re-run to get a
+native one. See [the opencode spec](docs/specs/opencode-session-format.md),
+§8.
 
 ## Encrypted reasoning replay
 
