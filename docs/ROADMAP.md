@@ -19,6 +19,12 @@ being repeated here.
 - Add a headless model-recall probe for opencode, analogous to
   `scripts/probe-codex-content.mjs`.
 - Measure opencode behavior with long imported histories.
+- Retry opencode subprocess calls that fail with `database is locked`, with a
+  short bounded backoff, before degrading to bootstrap or dropping the
+  configured-model preference; when the retries run out, say in the launch
+  note that the database was locked rather than reporting a generic failure.
+  See the contention risk in
+  [the opencode spec](specs/opencode-session-format.md), §8.
 - After the broader CLI support matrix is in place and Claude access is
   available, probe whether Claude Code's `system` or `attachment` transcript
   lines actually reach model context. If either is model-visible, use it for

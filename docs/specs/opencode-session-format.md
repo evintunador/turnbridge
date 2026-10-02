@@ -234,7 +234,13 @@ otherwise to write a resolvable value and disclose the real source model in the 
 **What turnbridge does now.** At fabricate time it lists `opencode models` and resolves the
 source model against it: an exact `provider/model`, or an unambiguous bare model id, is kept
 verbatim (opencode→opencode, or a user who registered the same model, keeps its own). Otherwise
-it takes the first listed model, records the substitution in the import notice
+it substitutes the model opencode itself would start a new session of the bridged agent (`build`)
+with: that agent's configured `model`, else the top-level `model`, read from `opencode debug
+config` so that global and project config files and `OPENCODE_CONFIG`/`OPENCODE_CONFIG_CONTENT`
+all count — whichever is first among those this install lists. Only when neither is set or
+listed does it take the first listed model. The first listed model is a poor default on its own:
+`opencode models` orders by provider, not by whether the user can dispatch with it, and its head
+is typically a hosted model that needs credentials the user may not have. It records the substitution in the import notice
 ("The turns below were produced by X; this session continues with Y…") and in a launch note. If
 `opencode models` yields nothing, fabrication throws `FabricationUnsupportedError` and falls back
 to bootstrap rather than writing a session that cannot dispatch. The chosen model is only a
@@ -269,8 +275,19 @@ starting point: verified that `-m` overrides it on a bridged session (stored `bi
   cheapest way to close this, since it needs no TUI.
 - Whether the `Model … is not valid` toast has any effect beyond the composer fallback (e.g. on
   `--fork`, or on tool permissioning) was not probed.
-- `opencode debug scrap` is a debug command; its output shape is not a stability promise. The
-  adapter treats a parse failure as "no project" and falls back to `global`.
+- `opencode debug scrap` and `opencode debug config` are debug commands; their output shape is
+  not a stability promise. The adapter treats a parse failure as "no project" (falls back to
+  `global`) and as "no configured model" (substitutes the first listed model) respectively.
+- **Contention on the shared database.** Every opencode process opens the one SQLite database
+  (§1), and fabrication runs several short-lived ones in a row (`--version`, `debug scrap`,
+  `debug config`, `models`, `import`). Any other opencode process writing at that moment can make
+  one of them fail with `database is locked`. The most likely writer is the capture of a session
+  that just ended: cledger's `session.idle` plugin runs `opencode export` right then, so
+  bridging immediately after closing opencode is the usual trigger. The adapter does not
+  distinguish this from a real failure: a failed `models` listing or `import` falls back to
+  bootstrap, and a failed `debug config` silently loses the configured-model preference. How
+  often it happens depends on how the filesystem holding the database implements locking;
+  waiting a few seconds and re-running avoids it.
 - The `project` table's id derivation is unknown (§3.1). If a future release lets `import`
   resolve the project from `info.directory`, the lookup could be dropped.
 - Long histories (hundreds of turns) were not measured for this target;

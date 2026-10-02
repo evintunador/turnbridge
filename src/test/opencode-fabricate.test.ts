@@ -413,6 +413,34 @@ test("a source model opencode can resolve is kept verbatim", async () => {
     modelID: "m",
     substitutedFrom: ["m"],
   });
+  // An unresolvable source is substituted with the first configured model
+  // this install lists — not whatever opencode happens to list first.
+  assert.deepEqual(resolveModel(
+    [{ model: "claude-x" }],
+    ["opencode/free", "fw/ds", "local/q"],
+    ["local/q", "fw/ds"],
+  ), {
+    providerID: "local",
+    modelID: "q",
+    substitutedFrom: ["claude-x"],
+  });
+  assert.deepEqual(resolveModel([{ model: "claude-x" }], ["opencode/free", "fw/ds"], ["gone/m", "fw/ds"]), {
+    providerID: "fw",
+    modelID: "ds",
+    substitutedFrom: ["claude-x"],
+  });
+  // A resolvable source model still wins over the configured default.
+  assert.deepEqual(resolveModel([{ model: "fw/ds" }], ["local/q", "fw/ds"], ["local/q"]), {
+    providerID: "fw",
+    modelID: "ds",
+    substitutedFrom: [],
+  });
+  // Nothing configured is listed: first listed, as before.
+  assert.deepEqual(resolveModel([{ model: "claude-x" }], ["opencode/free"], ["gone/m"]), {
+    providerID: "opencode",
+    modelID: "free",
+    substitutedFrom: ["claude-x"],
+  });
   // No models listed at all: the caller must not fabricate.
   assert.equal(resolveModel([{ model: "m", provider: "a" }], []), null);
 });
