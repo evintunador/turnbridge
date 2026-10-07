@@ -96,7 +96,7 @@ jobs:
           TURNBRIDGE_VERIFY_MISTRAL_VIBE_BINARY: ${{ runner.temp }}/vibe/bin/vibe
         run: |
           node dist/verification/program.js --cledger "$GITHUB_WORKSPACE/conversation-ledger/dist/cli.js" \
-            --runtime-dir "$RUNNER_TEMP/runtimes" --hub '${{ matrix.hub }}' --output "$RUNNER_TEMP/evidence"
+            --runtime-dir "$RUNNER_TEMP/runtimes" --hub '${{ matrix.hub }}' --require-core true --output "$RUNNER_TEMP/evidence"
       - name: Retain results including failures and blocked routes
         if: always()
         uses: actions/upload-artifact@v4

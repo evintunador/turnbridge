@@ -97,8 +97,10 @@ CLI-to-source-snapshot mapping; those seeds remain immutable across the run. `--
 runtime manifest; native/Python binary overrides use `TURNBRIDGE_VERIFY_*_BINARY`
 and Aider's interpreter uses `TURNBRIDGE_AIDER_PYTHON` (preserve its venv path).
 
-Reports retain fail, blocked and unsupported results. Exploratory CI succeeds
-only if it earns installed bridge passes, but does not claim every matrix cell
+Reports retain fail, blocked and unsupported results. Exploratory local runs succeed
+only if they earn installed bridge passes. Hosted CI adds `--require-core true`,
+requiring every selected hub-to-hub direction in both modes to pass; peripheral
+routes retain their individual results. Neither rule claims every matrix cell
 passes. Candidate promotion is a manual review of regressions and both-OS proof,
 not a green workflow badge. A new CLI's bootstrap can be useful even when its
 exact-ID resume prevents satisfying the full continuation certification.

@@ -17,6 +17,19 @@ export function bridgeEvidence(report: Record<string, unknown>): BridgeEvidence 
   return evidence;
 }
 
+/** Exploratory peripheral failures must not hide regressions between the hubs. */
+export function coreFailures(evidence: BridgeEvidence[], hubs: readonly CliName[], roster: readonly CliName[]): string[] {
+  const expected = new Set<string>();
+  for (const hub of hubs) for (const other of roster) {
+    if (hub === other || !HUBS.some(cli => cli === other)) continue;
+    for (const [source, target] of [[hub, other], [other, hub]]) for (const mode of ["native-import", "bootstrap"]) expected.add(`${source}->${target}/${mode}`);
+  }
+  return [...expected].filter(key => {
+    const matching = evidence.filter(run => `${run.source}->${run.target}/${run.mode}` === key);
+    return matching.length === 0 || matching.at(-1)!.status !== "pass";
+  });
+}
+
 export async function runProgram(options: { cledger: string; output: string; runtimeDirectory?: string; hub?: CliName; only?: CliName[]; timeoutMs?: number; sourceSnapshots?: Partial<Record<CliName, string>> }) {
   await mkdir(options.output, { recursive: true });
   if (options.runtimeDirectory) {
@@ -82,7 +95,7 @@ export async function runProgram(options: { cledger: string; output: string; run
 async function main() {
   const args = process.argv.slice(2), values = new Map<string, string>();
   for (let i = 0; i < args.length; i += 2) {
-    if (!["--cledger", "--output", "--runtime-dir", "--hub", "--only", "--timeout-ms", "--sources"].includes(args[i]!) || !args[i + 1]) throw Error(`Invalid option ${args[i]}`);
+    if (!["--cledger", "--output", "--runtime-dir", "--hub", "--only", "--timeout-ms", "--sources", "--require-core"].includes(args[i]!) || !args[i + 1]) throw Error(`Invalid option ${args[i]}`);
     values.set(args[i]!, args[i + 1]!);
   }
   const cledger = values.get("--cledger") ?? process.env.TURNBRIDGE_VERIFY_CLEDGER;
@@ -92,11 +105,16 @@ async function main() {
   if (hub && !HUBS.some(id => id === hub)) throw Error("--hub must select Claude, Codex or OpenCode");
   const timeoutMs = Number(values.get("--timeout-ms") ?? 45000);
   if (!Number.isInteger(timeoutMs) || timeoutMs < 1000 || timeoutMs > 180000) throw Error("Invalid timeout");
+  if (values.has("--require-core") && !["true", "false"].includes(values.get("--require-core")!)) throw Error("--require-core must be true or false");
   const result = await runProgram({ cledger: resolve(cledger), output: resolve(values.get("--output")!), timeoutMs,
     ...(hub ? { hub } : {}), ...(values.has("--only") ? { only: values.get("--only")!.split(",").map(parse) } : {}),
     ...(values.has("--sources") ? { sourceSnapshots: JSON.parse(await readFile(values.get("--sources")!, "utf8")) } : {}),
     ...(values.has("--runtime-dir") ? { runtimeDirectory: resolve(values.get("--runtime-dir")!) } : {}) });
-  // A matrix run is exploratory: retain failures without masking core regressions.
+  // Keep peripheral observations exploratory, with an explicit CI hub contract.
   if (!result.evidence.some(run => run.status === "pass")) process.exitCode = 1;
+  if (values.get("--require-core") === "true") {
+    const failures = coreFailures(result.evidence, hub ? [hub] : HUBS, values.has("--only") ? values.get("--only")!.split(",").map(parse) : CLI_CATALOG.map(cli => cli.id));
+    if (failures.length) { process.stderr.write(`Core bridge regressions or missing evidence: ${failures.join(", ")}\n`); process.exitCode = 1; }
+  }
 }
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) main().catch(error => { process.stderr.write(String(error) + "\n"); process.exitCode = 1; });

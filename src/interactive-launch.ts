@@ -52,9 +52,12 @@ export async function runInteractiveLaunchPlan(plan: LaunchPlan): Promise<number
         // Bracketed paste keeps a multiline prompt in the editor until one explicit Enter.
         child.write(input.paste === false ? input.prompt : "\x1b[200~" + input.prompt + "\x1b[201~");
         output = ""; // Only an echo after this paste establishes a composed prompt.
-      } else if (!submitted && pasted && plain.includes(input.prompt.slice(0, 20))) {
-        submitted = true; clearTimeout(timer);
-        enterTimer = setTimeout(() => { try { child.write("\r"); } catch { /* exited */ } }, 250);
+      } else if (!submitted && !enterTimer && pasted && plain.includes(input.prompt.slice(0, 20))) {
+        clearTimeout(timer);
+        enterTimer = setTimeout(() => {
+          submitted = true;
+          try { child.write("\r"); } catch { /* exited */ }
+        }, 250);
       }
     });
     process.stdin.setRawMode(true);
