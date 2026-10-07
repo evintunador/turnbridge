@@ -147,12 +147,15 @@ export async function verifyInstalledBridge(options: WorkerOptions) {
       if (mode === "native-import" && round === 0 && (name === "opencode" || name === "kilo")) actions.push(
         { waitFor: TERMINAL_SYNTAX[name].ready, send: "\x0f", delayMs: 750 },
         { waitFor: "^", send: "\x19", delayMs: 750 }, { waitFor: "^", send: "\x07", delayMs: 750 });
+      const viewed = mode === "native-import" && round === 0 && ((name === "claude-code" && needsViewing) || name === "opencode" || name === "kilo");
       if (!native.initialInput && (round > 0 || mode === "native-import")) {
         const promptMarker = `TB_NEW_${randomUUID().slice(0, 8)}`;
         const bracketedPaste = ["claude-code", "codex", "gemini-cli", "kimi", "open-interpreter", "goose"].includes(name);
         // Gemini publishes a Ready title before asynchronously restoring the
         // resumed messages. Wait for that session's actual last answer first.
-        const ready = name === "gemini-cli" && round > 0 ? "TB_DONE[\\s\\S]*" + previousSecret : TERMINAL_SYNTAX[name].ready;
+        // Viewing already established readiness; a retained footer may not be
+        // repainted after scrolling, so do not wait for the same bytes again.
+        const ready = viewed ? "^" : name === "gemini-cli" && round > 0 ? "TB_DONE[\\s\\S]*" + previousSecret : TERMINAL_SYNTAX[name].ready;
         actions.push({ waitFor: ready, send: `${promptMarker}. Read evidence.txt and report its exact contents; use the imported conversation as context.`, paste: bracketedPaste, delayMs: 1000 });
         // Readline-style editors may repaint one inserted character per cursor
         // move, so their raw echo need not contain the complete marker.

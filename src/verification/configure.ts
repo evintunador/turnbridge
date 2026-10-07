@@ -100,7 +100,7 @@ export async function configureScriptedTarget(cli: CliName, root: string, repo: 
 
 export const TERMINAL_SYNTAX: Record<CliName, { ready: string; quit: string }> = {
   "claude-code": { ready: "← for agents|for shortcuts", quit: "/exit" }, codex: { ready: "Ask Codex to do anything", quit: "/exit" },
-  opencode: { ready: "Ask anything|Ask a question|Build", quit: "/exit" }, kilo: { ready: "Ask anything|Ask a question|Build", quit: "/exit" },
+  opencode: { ready: "Ask anything|Ask a question|Build\\s*·\\s*fixture verification", quit: "/exit" }, kilo: { ready: "Ask anything|Ask a question|(?:Build|Code)\\s*·\\s*fixture verification", quit: "/exit" },
   "gemini-cli": { ready: "Ready \\(repo\\)", quit: "/quit" }, "qwen-code": { ready: "Type your message|Type a message|> ", quit: "/quit" },
   copilot: { ready: "tab next tab", quit: "/quit" }, cursor: { ready: "Ask|Type|❯", quit: "/quit" },
   kimi: { ready: "context:.*\\(|Type a message", quit: "/exit" }, "mistral-vibe": { ready: "> |Ask|Type", quit: "/exit" },

@@ -39,7 +39,7 @@ Qwen, Kimi, Vibe, OpenCode, Pi, OpenHands, Cline, Interpreter, Goose, Aider,
 Continue, Crush and Kilo. Codex→Claude, Qwen and Pi passed both modes; its other
 successful outbound routes include native Goose/OpenCode/Kilo and bootstrap
 Copilot, Vibe, OpenHands, Cline and Crush. Follow-up tests corrected and passed
-Codex→Gemini/Kimi/Interpreter/Goose bootstrap and OpenCode native viewing. Every
+Codex→Gemini/Kimi/Interpreter/Goose/Kilo bootstrap and OpenCode native viewing. Every
 pass includes the actual second native resume; Aider/Continue remain usable
 sources without being certified as exact-ID-resumable targets.
 
