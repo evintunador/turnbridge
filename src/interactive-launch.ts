@@ -69,14 +69,14 @@ export async function runInteractiveLaunchPlan(plan: LaunchPlan): Promise<number
     process.stdin.on("data", onInput);
     process.stdout.on("resize", resize);
     process.on("SIGTERM", terminate);
-    child.onExit(({ exitCode }) => {
+    child.onExit(({ exitCode, signal }) => {
       clearTimeout(timer); clearTimeout(enterTimer);
       process.stdin.removeListener("data", onInput);
       process.stdin.setRawMode(wasRaw ?? false);
       process.stdin.pause();
       process.stdout.removeListener("resize", resize);
       process.removeListener("SIGTERM", terminate);
-      resolve(exitCode);
+      resolve(signal ? 128 + signal : exitCode);
     });
   });
 }

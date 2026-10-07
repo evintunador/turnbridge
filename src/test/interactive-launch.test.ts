@@ -38,3 +38,18 @@ test("terminal discovery replies after paste do not cancel automatic submission"
     assert.match(result.output, /PROMPT_SUBMITTED/);
   } finally { await rm(root, { recursive: true, force: true }); }
 });
+
+
+test("the production bootstrap relay propagates a native termination signal", async () => {
+  const root = await realpath(await mkdtemp(join(tmpdir(), "turnbridge-relay-signal-")));
+  try {
+    const native = "import os,signal,tty; tty.setraw(0); os.write(1,b'COMPOSER_READY'); os.read(0,4096); os.kill(os.getpid(),signal.SIGTERM)";
+    const plan: LaunchPlan = { command: "python3", args: ["-c", native], cwd: root, notes: [], initialInput: { prompt: "TESTONLY bootstrap prompt", readiness: "COMPOSER_READY" } };
+    const path = join(root, "launch.json"); await writeFile(path, JSON.stringify(plan));
+    const result = await runPty(process.execPath, [fileURLToPath(new URL("../verification/launch.js", import.meta.url)), path], {
+      cwd: root, env: { PATH: process.env.PATH, TERM: "xterm-256color" }, timeoutMs: 5000, actions: [],
+    });
+    assert.equal(result.timedOut, false);
+    assert.equal(result.code, 143, result.output);
+  } finally { await rm(root, { recursive: true, force: true }); }
+});

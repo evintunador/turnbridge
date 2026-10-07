@@ -5,9 +5,9 @@ model certification. Capture used clean merged cledger `f9853f7`; the hosted
 workflow also checks out the entire library dependency at that revision.
 A final local hub rerun used clean copies of both cledger and annals
 (`dcd06c0`), avoiding both dirty sibling working trees. Fresh captures and all
-twelve directed hub/mode scenarios passed, as did all 139 unit/integration tests.
+twelve directed hub/mode scenarios passed, as did all 141 unit/integration tests.
 
-- The full unit/integration suite passes 139 tests with zero skips, including
+- The full unit/integration suite passes 141 tests with zero skips, including
   real terminal keyboard negotiation and user input cancelling delayed submission.
 - Actual captured Pi 0.87.1 history completed native import, context, a new linked
   read/result, automatic capture, lineage, exact native resume and normal exit in
@@ -46,7 +46,7 @@ Codex→Gemini/Kimi/Interpreter/Goose/Kilo bootstrap and OpenCode native viewing
 pass includes the actual second native resume; Aider/Continue remain usable
 sources without being certified as exact-ID-resumable targets.
 
-The other hub and hosted OS campaigns are still being checked. Their exact-version
+The hosted OS campaigns publish authoritative exact-version
 JSON reports, raw terminal traces, reconstructed screens, rendered marker frames,
 provider requests and automatic ledger records are retained in task-owned temp
 roots and in hosted CI artifacts. The complete 432-cell matrix includes missing,
@@ -70,7 +70,7 @@ notice is clamped to zero, preserving all real event timestamps. A real installe
 Continue→OpenCode native regression passed. A Crush terminal-discovery reply
 previously cancelled delayed Enter; both the nested PTY regression and an
 installed OpenCode→Crush bootstrap/resume regression passed after correction.
-A corrected full hosted run will determine the final both-OS evidence.
+Final both-OS evidence is reported with the draft PR’s installed checks.
 
 Screen reconstruction samples rendered lines before destructive terminal updates,
 retaining answers that are cleared during normal exit within the same PTY read.
@@ -106,3 +106,13 @@ reconstructed screen, retaining a nonce split across cursor-addressed updates.
 Gemini→OpenCode passed every continuation gate using its public native `/export`
 viewer with interactive `less`, then returning to its restored composer. This
 `native-export` result remains separate from the default-scrolling failure.
+
+Native signal termination now returns a failure exit code through both direct
+handoff and the production terminal relay; real child-process/PTY regressions
+verify this rather than allowing a crash to look like a successful handoff.
+
+Separate candidate checks passed Pi 1.0.4 bootstrap, automatic capture and exact
+resume, plus transfer of its captured source into Codex in both modes. Its
+unverified native import format safely remains unsupported. Kilo 7.8.3 still
+exhibited native runtime crashes. These candidate observations do not promote
+the pinned versions.
