@@ -3,6 +3,9 @@
 These are scripted-provider observations against installed binaries, not live
 model certification. Capture used clean merged cledger `f9853f7`; the hosted
 workflow also checks out the entire library dependency at that revision.
+A final local hub rerun used clean copies of both cledger and annals
+(`dcd06c0`), avoiding both dirty sibling working trees. Fresh captures and all
+twelve directed hub/mode scenarios passed, as did all 128 unit/integration tests.
 
 - The full unit/integration suite passes 128 tests with zero skips, including
   real terminal keyboard negotiation and user input cancelling delayed submission.
