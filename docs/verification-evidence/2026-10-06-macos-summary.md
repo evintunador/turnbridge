@@ -116,3 +116,8 @@ resume, plus transfer of its captured source into Codex in both modes. Its
 unverified native import format safely remains unsupported. Kilo 7.8.3 still
 exhibited native runtime crashes. These candidate observations do not promote
 the pinned versions.
+
+A later hosted Mac Codex report retained one Kimi timeout with `/exit` left in
+its slash-command composer after successful read/capture. The installed driver
+now uses Kimi’s documented double Ctrl-D native exit confirmation. The actual
+captured Codex-source bootstrap and second exact-ID resume passed locally.

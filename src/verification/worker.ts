@@ -184,6 +184,10 @@ export async function verifyInstalledBridge(options: WorkerOptions) {
       }
       if (name === "openhands") actions.push({ waitFor: "^", waitForPath: completion, send: "\x11", delayMs: 750 });
       else if (name === "crush") actions.push({ waitFor: "TB_DONE[\\s\\S]*" + secret, waitForPath: completion, send: "\x03", delayMs: 500 }, { waitFor: "Are you sure you want to quit", send: "y" });
+      // Native double Ctrl-D confirmation avoids slash-command autocomplete.
+      else if (name === "kimi") actions.push(
+        { waitFor: "TB_DONE[\\s\\S]*" + secret, waitForPath: completion, send: "\x04", delayMs: 1000 },
+        { waitFor: "^", send: "\x04", delayMs: 500 });
       else if (name === "copilot") actions.push({ waitFor: "^", waitForPath: completion, send: TERMINAL_SYNTAX[name].quit, delayMs: 1000 }, { waitFor: "^", send: "\r", delayMs: 1000 });
       else if (name === "cline") actions.push({ waitFor: "^", waitForPath: completion, send: "/exit\r", paste: true, delayMs: 1000 });
       else actions.push({ waitFor: "TB_DONE[\\s\\S]*" + secret + (name === "gemini-cli" ? "[\\s\\S]*Ready \\(repo\\)" : ""), waitForPath: completion, send: TERMINAL_SYNTAX[name].quit, delayMs: 1000 },

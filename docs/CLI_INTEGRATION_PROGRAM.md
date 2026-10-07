@@ -144,3 +144,7 @@ Gemini→OpenCode native history is inspected through OpenCode’s public `/expo
 action and the interactive `less` editor. Evidence calls this `native-export`,
 separately from default-scroll failures. The exported content comes from the
 installed CLI’s own session, never a verifier-printed ledger transcript.
+
+Kimi verification exits through its native double Ctrl-D confirmation, following
+[its keyboard documentation](https://moonshotai.github.io/kimi-code/en/reference/keyboard.html).
+This avoids leaving `/exit` in slash-command autocomplete after a completed turn.
