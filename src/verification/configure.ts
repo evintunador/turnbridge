@@ -27,7 +27,7 @@ export async function configureScriptedTarget(cli: CliName, root: string, repo: 
   if (cli === "opencode" || cli === "kilo") {
     const home = join(root, "config", cli);
     Object.assign(env, { OPENCODE_DISABLE_FFF: "1", KILO_DISABLE_AUTOUPDATE: "true", KILO_DISABLE_MODELS_FETCH: "true", KILO_DISABLE_DEFAULT_PLUGINS: "true", KILO_DISABLE_EXTERNAL_SKILLS: "true", KILO_DISABLE_LSP_DOWNLOAD: "true" });
-    await json(join(home, "tui.json"), { theme: "opencode", keybinds: { tool_details: "ctrl+o", session_toggle_generic_tool_output: "ctrl+y" } });
+    await json(join(home, "tui.json"), { theme: "opencode", keybinds: { tool_details: "ctrl+o", session_toggle_generic_tool_output: "ctrl+y", session_first: "ctrl+g" } });
     await json(join(home, cli + ".json"), { enabled_providers: ["verification"], model: "verification/fixture", small_model: "verification/fixture", share: "disabled",
       permission: { "*": "deny", read: "allow", external_directory: { [join(root, ".turnbridge", "bootstrap", "*")]: "allow" } }, provider: { verification: { npm: "@ai-sdk/openai-compatible", options: { baseURL: endpoint + "/v1", apiKey: "TESTONLY-fixture" },
         models: { fixture: { name: "fixture", limit: { context: 65536, output: 2048 } } } } } });
@@ -41,7 +41,7 @@ export async function configureScriptedTarget(cli: CliName, root: string, repo: 
   }
   if (cli === "gemini-cli") {
     Object.assign(env, { GEMINI_API_KEY: "TESTONLY-fixture", GOOGLE_GEMINI_BASE_URL: endpoint, GEMINI_CLI_HOME: root, GEMINI_CLI_TRUST_WORKSPACE: "true" });
-    await json(join(root, ".gemini", "settings.json"), { security: { auth: { selectedType: "gemini-api-key" } }, telemetry: { enabled: false }, model: { name: "gemini-2.5-flash" } });
+    await json(join(root, ".gemini", "settings.json"), { general: { enableAutoUpdate: false, enableAutoUpdateNotification: false }, security: { auth: { selectedType: "gemini-api-key" } }, telemetry: { enabled: false }, model: { name: "gemini-2.5-flash" } });
     return ["--approval-mode", "auto_edit"];
   }
   if (cli === "pi") {
@@ -103,7 +103,7 @@ export const TERMINAL_SYNTAX: Record<CliName, { ready: string; quit: string }> =
   opencode: { ready: "Ask anything|Ask a question|Build", quit: "/exit" }, kilo: { ready: "Ask anything|Ask a question|Build", quit: "/exit" },
   "gemini-cli": { ready: "Ready \\(repo\\)", quit: "/quit" }, "qwen-code": { ready: "Type your message|Type a message|> ", quit: "/quit" },
   copilot: { ready: "tab next tab", quit: "/quit" }, cursor: { ready: "Ask|Type|❯", quit: "/quit" },
-  kimi: { ready: "fixture|Type a message", quit: "/exit" }, "mistral-vibe": { ready: "> |Ask|Type", quit: "/exit" },
+  kimi: { ready: "context:.*\\(|Type a message", quit: "/exit" }, "mistral-vibe": { ready: "> |Ask|Type", quit: "/exit" },
   droid: { ready: "Type|Ask|❯", quit: "/quit" }, kiro: { ready: "ask a question or describe a task", quit: "/quit" },
   pi: { ready: "─|fixture", quit: "/quit" }, openhands: { ready: "Type|Task|OpenHands", quit: "/exit" }, cline: { ready: "Type|Ask|❯", quit: "/exit" },
   "open-interpreter": { ready: "ledger-test default", quit: "/exit" }, goose: { ready: "Enter to send", quit: "/exit" },

@@ -64,7 +64,9 @@ try:
     for match in (re.finditer(pattern,queries) if config.get('answerTerminalQueries',True) else []):
      query=match.group()
      if query=='\x1b[6n': reply='\x1b[1;1R'
-     elif query=='\x1b[?u': reply='\x1b[?0u'
+     # Even a zero-flags Kitty reply advertises protocol support. Silence
+     # means unsupported, matching the ordinary Enter bytes this driver sends.
+     elif query=='\x1b[?u': reply=''
      elif query=='\x1b[c': reply='\x1b[?1;2c'
      elif query.startswith('\x1b]10;'): reply='\x1b]10;rgb:ffff/ffff/ffff\x1b\\'
      else: reply='\x1b]11;rgb:0000/0000/0000\x1b\\'

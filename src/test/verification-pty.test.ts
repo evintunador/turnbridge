@@ -39,3 +39,13 @@ test("PTY preserves Unicode even when a native process splits UTF-8 bytes", asyn
   assert.match(result.output, /日本語 🦉/);
   assert(!result.output.includes("�"));
 });
+
+test("legacy PTY does not advertise Kitty keyboard support before sending ordinary Enter", async () => {
+  const native = "import os,select,tty; tty.setraw(0); os.write(1,b'\\x1b[?u'); ready,_,_=select.select([0],[],[],.2); assert not ready, 'unexpected keyboard protocol advertisement'; os.write(1,b'READY'); assert os.read(0,1)==b'\\r'; os.write(1,b'ENTER_OK')";
+  const result = await runPty("python3", ["-c", native], {
+    cwd: process.cwd(), env: { PATH: process.env.PATH }, timeoutMs: 3000,
+    actions: [{ waitFor: "READY", send: "\r" }],
+  });
+  assert.equal(result.code, 0, result.output);
+  assert.match(result.output, /ENTER_OK/);
+});

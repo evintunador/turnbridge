@@ -110,6 +110,7 @@ export async function verifyInstalledBridge(options: WorkerOptions) {
     for (let round = 0; round < 2; round++) {
       const contextStart = provider.state.contexts.length;
       const secret = `TB_FILE_${randomUUID()}`;
+      const previousSecret = provider.state.secret;
       provider.state.secret = secret;
       await writeFile(join(repoPath, "evidence.txt"), secret + "\n", { mode: 0o600 });
       const completion = join(root, `round-${round}-complete`), trace = join(root, `round-${round}-terminal.log`);
@@ -143,13 +144,19 @@ export async function verifyInstalledBridge(options: WorkerOptions) {
       if (mode === "native-import" && round === 0 && needsViewing && name === "claude-code") actions.push(
         { waitFor: TERMINAL_SYNTAX[name].ready, send: "\x0f", delayMs: 1000 },
         { waitFor: "^", send: "[", delayMs: 750 }, { waitFor: "^", send: "\x1b", delayMs: 750 });
-      if (mode === "native-import" && round === 0 && needsViewing && (name === "opencode" || name === "kilo")) actions.push(
+      if (mode === "native-import" && round === 0 && (name === "opencode" || name === "kilo")) actions.push(
         { waitFor: TERMINAL_SYNTAX[name].ready, send: "\x0f", delayMs: 750 },
         { waitFor: "^", send: "\x19", delayMs: 750 }, { waitFor: "^", send: "\x07", delayMs: 750 });
       if (!native.initialInput && (round > 0 || mode === "native-import")) {
         const promptMarker = `TB_NEW_${randomUUID().slice(0, 8)}`;
-        actions.push({ waitFor: TERMINAL_SYNTAX[name].ready, send: `${promptMarker}. Read evidence.txt and report its exact contents; use the imported conversation as context.`, paste: name === "claude-code" || name === "codex", delayMs: 1000 });
-        actions.push({ waitFor: "^", send: "\r", delayMs: 750 });
+        const bracketedPaste = ["claude-code", "codex", "gemini-cli", "kimi", "open-interpreter", "goose"].includes(name);
+        // Gemini publishes a Ready title before asynchronously restoring the
+        // resumed messages. Wait for that session's actual last answer first.
+        const ready = name === "gemini-cli" && round > 0 ? "TB_DONE[\\s\\S]*" + previousSecret : TERMINAL_SYNTAX[name].ready;
+        actions.push({ waitFor: ready, send: `${promptMarker}. Read evidence.txt and report its exact contents; use the imported conversation as context.`, paste: bracketedPaste, delayMs: 1000 });
+        // Readline-style editors may repaint one inserted character per cursor
+        // move, so their raw echo need not contain the complete marker.
+        actions.push({ waitFor: bracketedPaste ? promptMarker : "^", send: "\r", delayMs: 1000 });
       }
       if (name === "openhands") actions.push({ waitFor: "^", waitForPath: completion, send: "\x11", delayMs: 750 });
       else if (name === "crush") actions.push({ waitFor: "TB_DONE[\\s\\S]*" + secret, waitForPath: completion, send: "\x03", delayMs: 500 }, { waitFor: "Are you sure you want to quit", send: "y" });
@@ -174,8 +181,10 @@ export async function verifyInstalledBridge(options: WorkerOptions) {
       await writeFile(join(root, `round-${round}-screen.svg`), screen.svg);
       await writeFile(join(root, `round-${round}-screen.txt`), screen.text);
       await writeFile(join(root, `round-${round}-rendered-markers.json`), JSON.stringify(screen.markerFrames, null, 2));
-      report.artifacts.push(trace, join(root, `round-${round}-screen.svg`));
-      if (/pointer being freed was not allocated|Bun has crashed|Segmentation fault/.test(terminal.output)) { report.status = "blocked"; report.reason = "Installed native runtime crashed; artifacts retain its allocator/panic output"; return report; }
+      report.artifacts.push(trace, join(root, `round-${round}-screen.svg`), join(root, `round-${round}-terminal-result.json`));
+      if ((!terminal.timedOut && [-11, -6].includes(terminal.code)) || /pointer being freed was not allocated|Bun has crashed|Segmentation fault/.test(terminal.output)) {
+        report.status = "blocked"; report.reason = `Installed native runtime crashed (exit ${terminal.code}); artifacts retain signal status and any allocator/panic output`; return report;
+      }
       let events = ownEvents(await exportEvents());
       const captureDeadline = Date.now() + 12_000;
       while (normalExit && Date.now() < captureDeadline && !events.some(event => event.actor.type === "agent" && JSON.stringify(event.content).includes("TB_DONE") && JSON.stringify(event.content).includes(secret))) {
