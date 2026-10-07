@@ -18,3 +18,10 @@ test("screen artifacts resolve cursor movement and overwrite rather than concate
   assert.match(screen.svg, /&lt;script>/);
   assert.doesNotMatch(screen.svg, /<script>/);
 });
+
+test("a displayed answer survives an exit clearing the screen in the same PTY read", async () => {
+  const screen = await terminalScreen("\x1b[?1049hTB_DONE visible answer\r\n\x1b[2J\x1b[?1049lExited\r\n", ["TB_DONE"]);
+  assert.deepEqual(screen.observedMarkers, ["TB_DONE"]);
+  assert.match(screen.svg, /TB_DONE visible answer/);
+  assert.match(screen.markerFrames[0]!.text, /TB_DONE visible answer/);
+});

@@ -186,7 +186,7 @@ export async function verifyInstalledBridge(options: WorkerOptions) {
       if (name === "droid" && /Log in to Factory|Log in to get started|Please login with your Factory account/.test(terminal.output)) { report.reason = "login-required: disposable profile has no Factory account credential"; return report; }
       await writeFile(join(root, `round-${round}-terminal-result.json`), JSON.stringify({ ...terminal, output: undefined }, null, 2));
       normalExit &&= terminal.code === 0 && !terminal.timedOut && terminal.actionsCompleted === actions.length;
-      const screen = await terminalScreen(terminal.output, [historyMarker, assistantMarker]);
+      const screen = await terminalScreen(terminal.output, [historyMarker, assistantMarker, secret]);
       await writeFile(join(root, `round-${round}-screen.svg`), screen.svg);
       await writeFile(join(root, `round-${round}-screen.txt`), screen.text);
       await writeFile(join(root, `round-${round}-rendered-markers.json`), JSON.stringify(screen.markerFrames, null, 2));

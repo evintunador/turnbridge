@@ -8,8 +8,12 @@ export async function terminalScreen(output: string, markers: readonly string[] 
   let best = { score: -1, text: "", viewport: [] as string[] };
   const observed = new Map<string, string>();
   try {
-    for (let start = 0; start < output.length; start += 2048) {
-      await new Promise<void>(done => terminal.write(output.slice(start, start + 2048), done));
+    // Sample rendered lines and before destructive terminal operations. A PTY
+    // read may contain both an answer and the app's alternate-screen exit;
+    // sampling only arbitrary byte chunks loses genuinely displayed content.
+    const frames = output.split(/(?<=\n)|(?=\x1b\[(?:[\d;?]*[JKPXLMST]|\?104[79][hl]))/);
+    for (const frame of frames) for (let start = 0; start < frame.length; start += 2048) {
+      await new Promise<void>(done => terminal.write(frame.slice(start, start + 2048), done));
       const buffer = terminal.buffer.active;
       const all = Array.from({ length: buffer.length }, (_, index) => buffer.getLine(index)?.translateToString(true) ?? "");
       const text = all.join("\n");

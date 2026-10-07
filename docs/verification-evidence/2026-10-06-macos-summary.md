@@ -5,9 +5,9 @@ model certification. Capture used clean merged cledger `f9853f7`; the hosted
 workflow also checks out the entire library dependency at that revision.
 A final local hub rerun used clean copies of both cledger and annals
 (`dcd06c0`), avoiding both dirty sibling working trees. Fresh captures and all
-twelve directed hub/mode scenarios passed, as did all 135 unit/integration tests.
+twelve directed hub/mode scenarios passed, as did all 136 unit/integration tests.
 
-- The full unit/integration suite passes 135 tests with zero skips, including
+- The full unit/integration suite passes 136 tests with zero skips, including
   real terminal keyboard negotiation and user input cancelling delayed submission.
 - Actual captured Pi 0.87.1 history completed native import, context, a new linked
   read/result, automatic capture, lineage, exact native resume and normal exit in
@@ -70,3 +70,8 @@ Continue→OpenCode native regression passed. A Crush terminal-discovery reply
 previously cancelled delayed Enter; both the nested PTY regression and an
 installed OpenCode→Crush bootstrap/resume regression passed after correction.
 A corrected full hosted run will determine the final both-OS evidence.
+
+Screen reconstruction samples rendered lines before destructive terminal updates,
+retaining answers that are cleared during normal exit within the same PTY read.
+A regression checks that behavior, and the retained Crush transcript was visually
+inspected with the imported transcript read, fresh file result and answer visible.
