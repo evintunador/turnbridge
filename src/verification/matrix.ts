@@ -4,6 +4,7 @@ export const HUBS = ["claude-code", "codex", "opencode"] as const;
 export type BridgeMode = "native-import" | "bootstrap";
 export type Platform = "darwin" | "linux";
 export type InferenceTier = "scripted" | "local-model" | "usual-provider";
+export type UiMode = "standard" | "screen-reader" | "native-export";
 
 export interface BridgeScenario {
   source: string;
@@ -35,6 +36,8 @@ export interface BridgeEvidence extends BridgeScenario {
   sourceVersion: string;
   targetVersion: string;
   tier: InferenceTier;
+  uiMode?: UiMode;
+  sourceUiMode?: UiMode;
   terminal: "interactive";
   sourceProof: "installed-capture";
   status: "pass" | "fail" | "blocked" | "unsupported";
@@ -51,6 +54,7 @@ export function validateEvidence(evidence: BridgeEvidence): void {
   if (evidence.sourceProof !== "installed-capture") throw Error("Bridge evidence requires an installed captured source");
   if (evidence.terminal !== "interactive") throw Error("Headless evidence cannot qualify an interactive bridge");
   if (!["scripted", "local-model", "usual-provider"].includes(evidence.tier)) throw Error("Unknown inference tier");
+  for (const mode of [evidence.uiMode, evidence.sourceUiMode]) if (mode !== undefined && !["standard", "screen-reader", "native-export"].includes(mode)) throw Error("Unknown UI mode");
   if (!["pass", "fail", "blocked", "unsupported"].includes(evidence.status)) throw Error("Unknown evidence status");
   if (![evidence.sourceVersion, evidence.targetVersion].every(v => /^\d+\.\d+\.\d+(?:[-+][\w.-]+)?$/.test(v))) throw Error("Exact CLI versions are required");
   if (!Number.isFinite(Date.parse(evidence.observedAt))) throw Error("Evidence requires an observation timestamp");
@@ -65,7 +69,7 @@ export function scenarioKey(scenario: BridgeScenario): string {
 
 /** Reports use an exact version pair, OS, mode and tier; no broader support inference. */
 export function evidenceKey(evidence: BridgeEvidence): string {
-  return `${scenarioKey(evidence)}/${evidence.sourceVersion}/${evidence.targetVersion}/${evidence.tier}`;
+  return `${scenarioKey(evidence)}/${evidence.sourceVersion}/${evidence.targetVersion}/${evidence.tier}/${evidence.sourceUiMode ?? "standard"}/${evidence.uiMode ?? "standard"}`;
 }
 
 export function latestEvidence(runs: readonly BridgeEvidence[]): BridgeEvidence[] {

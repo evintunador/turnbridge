@@ -121,3 +121,26 @@ Live canaries assemble visible assistant text across streaming token events befo
 checking completion. Hidden reasoning and tool-call arguments cannot satisfy that
 check. Inference still requires an explicitly configured local endpoint or a
 dedicated, budgeted provider configuration.
+
+Qwen installed verification uses its native interactive `--screen-reader` mode
+to expose older restored turns. Reports and source snapshots record source/target
+UI modes; accessibility-mode passes cannot supersede standard-mode failures.
+The standard visual Qwen layout remains outside that certificate.
+
+Scheduled review proposals are also retained as thirty-day artifacts. If GitHub
+blocks automatic draft creation, the workflow emits a warning and links reviewers
+to that proposal rather than losing the evidence. The repository
+[Actions creation/approval setting](https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/enabling-features-for-your-repository/managing-github-actions-settings-for-a-repository#preventing-github-actions-from-creating-or-approving-pull-requests)
+is currently disabled; enabling that bundled permission requires owner approval.
+
+Exit readiness uses completed inference and native rendered replies where the
+driver supports them. Copilot replies are reconstructed from cursor updates;
+OpenHands/Cline use completion signals rather than a rendered-answer gate.
+Ledger proof is checked after normal native exit so SessionEnd capture can flush
+the read result and final answer. The verifier never performs backfill; both
+linked read/result and visible assistant completion remain mandatory gates.
+
+Gemini→OpenCode native history is inspected through OpenCode’s public `/export`
+action and the interactive `less` editor. Evidence calls this `native-export`,
+separately from default-scroll failures. The exported content comes from the
+installed CLI’s own session, never a verifier-printed ledger transcript.

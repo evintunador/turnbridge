@@ -47,7 +47,17 @@ jobs:
           walk('candidate-evidence');
           writeFileSync('verification/candidate-results.json', JSON.stringify({releases:candidates.releases, workflowRun:process.env.GITHUB_RUN_ID, reports}, null, 2)+'\n');
           JS
+      - name: Retain the review proposal even when PR creation is disabled
+        uses: actions/upload-artifact@v4
+        with:
+          name: cli-integration-review-proposal
+          path: |
+            verification/candidates.json
+            verification/candidate-results.json
+          retention-days: 30
       - uses: peter-evans/create-pull-request@v7
+        id: proposal
+        continue-on-error: true
         with:
           branch: automation/cli-integration-candidates
           commit-message: 'Record candidate CLI releases and installed bridge observations'
@@ -62,3 +72,8 @@ jobs:
             Review the recorded failures, blockers and unsupported routes before changing any runtime or adapter format pins. This draft proposes evidence for review; it does not promote pins or merge automatically. Native/Python release upgrades still need checksum and dependency-lock review.
 
             Full terminal traces, reconstructed screens, provider requests and automatic capture records are attached to this workflow run's artifacts.
+      - name: Report blocked automatic PR creation
+        if: steps.proposal.outcome == 'failure'
+        run: |
+          echo '::warning::Automatic draft PR creation failed; the cli-integration-review-proposal artifact retains the proposal for manual review.'
+          echo 'Draft PR creation failed. Review the retained **cli-integration-review-proposal** artifact and the proposal step error. GitHub repository settings may prohibit Actions PR creation even with workflow-level permissions.' >> "$GITHUB_STEP_SUMMARY"

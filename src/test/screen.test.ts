@@ -25,3 +25,11 @@ test("a displayed answer survives an exit clearing the screen in the same PTY re
   assert.match(screen.svg, /TB_DONE visible answer/);
   assert.match(screen.markerFrames[0]!.text, /TB_DONE visible answer/);
 });
+
+
+test("cursor-addressed streaming can render a complete nonce absent from raw bytes", async () => {
+  const raw = "TB_DONE TB_FILE_ab\x1b[1;19Hcd\r\n";
+  assert(!raw.includes("TB_FILE_abcd"));
+  const screen = await terminalScreen(raw, ["TB_FILE_abcd"]);
+  assert.deepEqual(screen.observedMarkers, ["TB_FILE_abcd"]);
+});

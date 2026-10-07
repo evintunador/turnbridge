@@ -27,7 +27,7 @@ export async function configureScriptedTarget(cli: CliName, root: string, repo: 
   if (cli === "opencode" || cli === "kilo") {
     const home = join(root, "config", cli);
     Object.assign(env, { OPENCODE_DISABLE_FFF: "1", OPENCODE_DISABLE_MODELS_FETCH: "true", OPENCODE_DISABLE_DEFAULT_PLUGINS: "true", OPENCODE_DISABLE_EXTERNAL_SKILLS: "true", OPENCODE_DISABLE_LSP_DOWNLOAD: "true", OPENCODE_DISABLE_AUTOUPDATE: "true", KILO_DISABLE_AUTOUPDATE: "true", KILO_DISABLE_MODELS_FETCH: "true", KILO_DISABLE_DEFAULT_PLUGINS: "true", KILO_DISABLE_EXTERNAL_SKILLS: "true", KILO_DISABLE_LSP_DOWNLOAD: "true" });
-    await json(join(home, "tui.json"), { theme: "opencode", keybinds: { tool_details: "ctrl+o", session_toggle_generic_tool_output: "ctrl+y", session_first: "ctrl+g" } });
+    await json(join(home, "tui.json"), { theme: "opencode", keybinds: { tool_details: "ctrl+o", session_toggle_generic_tool_output: "ctrl+y", messages_first: "ctrl+g", messages_next: "ctrl+n" } });
     await json(join(home, cli + ".json"), { ...(cli === "kilo" ? { snapshot: false } : {}), enabled_providers: ["verification"], model: "verification/fixture", small_model: "verification/fixture", share: "disabled",
       permission: { "*": "deny", read: "allow", external_directory: { [join(root, ".turnbridge", "bootstrap", "*")]: "allow" } }, provider: { verification: { npm: "@ai-sdk/openai-compatible", options: { baseURL: endpoint + "/v1", apiKey: "TESTONLY-fixture" },
         models: { fixture: { name: "fixture", limit: { context: 65536, output: 2048 } } } } } });
@@ -37,7 +37,7 @@ export async function configureScriptedTarget(cli: CliName, root: string, repo: 
     env.QWEN_RUNTIME_DIR = join(root, ".qwen");
     Object.assign(env, { OPENAI_API_KEY: "TESTONLY-fixture", OPENAI_BASE_URL: endpoint + "/v1", OPENAI_MODEL: "fixture" });
     await json(join(root, ".qwen", "settings.json"), { security: { auth: { selectedType: "openai" } }, model: { name: "fixture" }, modelProviders: { openai: [{ id: "fixture", baseUrl: endpoint + "/v1", envKey: "OPENAI_API_KEY" }] }, telemetry: { enabled: false } });
-    return ["--approval-mode", "yolo"];
+    return ["--approval-mode", "yolo", "--screen-reader"];
   }
   if (cli === "gemini-cli") {
     Object.assign(env, { GEMINI_API_KEY: "TESTONLY-fixture", GOOGLE_GEMINI_BASE_URL: endpoint, GEMINI_CLI_HOME: root, GEMINI_CLI_TRUST_WORKSPACE: "true" });

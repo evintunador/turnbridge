@@ -15,7 +15,7 @@ import type { LocalModelConfig } from "./local-model.js";
 import { startBridgeProvider } from "./provider.js";
 import { configureScriptedTarget, TERMINAL_SYNTAX } from "./configure.js";
 import { terminalScreen } from "./screen.js";
-import { requiredGates, type BridgeMode, type Gate } from "./matrix.js";
+import { requiredGates, type BridgeMode, type Gate, type UiMode } from "./matrix.js";
 
 export interface WorkerOptions {
   root: string; target: CliName; source: CliName; mode: BridgeMode; cledger: string;
@@ -24,6 +24,7 @@ export interface WorkerOptions {
 export interface SourceSnapshot {
   summary: ConversationSummary; version: string; historyMarker: string; assistantMarker: string;
   proof: "installed-capture"; artifacts: string[]; ledgerEvents?: EvidenceEvent[];
+  uiMode?: UiMode;
 }
 
 function linkedRead(events: EvidenceEvent[], secret: string): boolean {
@@ -55,8 +56,9 @@ export async function verifyInstalledBridge(options: WorkerOptions) {
   const report = { schema: "turnbridge-installed/1", source: options.source, target: name, mode, platform: process.platform,
     terminal: "interactive", tier: options.localModel?.tier ?? (options.localModel ? "local-model" : "scripted"), sourceProof: options.sourceFile ? "installed-capture" : "canonical-fixture",
     certification: options.sourceFile ? "installed-bridge" : "installed-target-smoke",
+    uiMode: (name === "qwen-code" ? "screen-reader" : name === "opencode" && options.source === "gemini-cli" && mode === "native-import" ? "native-export" : "standard") as UiMode, sourceUiMode: "standard" as UiMode,
     sourceVersion: "fixture", targetVersion: "unknown", status: "blocked", gates: {} as Partial<Record<Gate, boolean>>, reason: "", artifacts: [] as string[],
-    observedAt: new Date().toISOString(), exclusions: [...(options.localModel ? [] : ["live model/provider behavior"]), ...(name === "kilo" ? ["filesystem snapshots/checkpoints (disabled in the isolated read-only fixture)"] : []), "full visual layout certification", "other CLI versions", "other operating systems"] };
+    observedAt: new Date().toISOString(), exclusions: [...(options.localModel ? [] : ["live model/provider behavior"]), ...(name === "qwen-code" ? ["standard Qwen display mode (the installed fixture uses its interactive screen-reader mode)"] : []), ...(name === "opencode" && options.source === "gemini-cli" && mode === "native-import" ? ["default OpenCode history scrolling (viewed through its native /export action and interactive editor instead)"] : []), ...(name === "kilo" ? ["filesystem snapshots/checkpoints (disabled in the isolated read-only fixture)"] : []), "full visual layout certification", "other CLI versions", "other operating systems"] };
   let provider: Awaited<ReturnType<typeof startBridgeProvider>> | undefined;
   const checked = async (command: string, args: string[], timeoutMs = 20_000) => {
     const result = await runProcess(command, args, { cwd: repoPath, env: process.env, timeoutMs });
@@ -77,6 +79,7 @@ export async function verifyInstalledBridge(options: WorkerOptions) {
       if (snapshot.proof !== "installed-capture" || snapshot.summary.source !== options.source) throw Error("Source snapshot does not establish installed capture for this CLI");
       sourceId = snapshot.summary.id;
       historyMarker = snapshot.historyMarker; assistantMarker = snapshot.assistantMarker; report.sourceVersion = snapshot.version;
+      report.sourceUiMode = snapshot.uiMode ?? "standard";
       await appendEvents(repo, (snapshot.ledgerEvents ?? snapshot.summary.events).map(({ id, schema, recorded_at, ...draft }) => draft));
     } else {
       const sessionId = randomUUID(), id = `${options.source}:${sessionId}`;
@@ -101,6 +104,7 @@ export async function verifyInstalledBridge(options: WorkerOptions) {
     if (name === "cline") await checked(target.binary, ["auth", "openai-compatible", "--apikey", "TESTONLY-local", "--modelid", "fixture", "--baseurl", provider.endpoint + "/v1"]);
     if (name === "kiro" || name === "cursor") { report.reason = "Scripted installed bridge driver requires an available isolated provider/auth route"; return report; }
     if (mode === "native-import" && target.supportsNativeImport === false) { report.status = "unsupported"; report.reason = "Native import unavailable; bootstrap is a separate supported route"; return report; }
+    if (report.uiMode === "native-export") process.env.EDITOR = "less -R";
     await checked(process.execPath, [options.cledger, "install", name]);
     process.chdir(repoPath);
     const lineage = await readLineage(repo, true);
@@ -124,14 +128,18 @@ export async function verifyInstalledBridge(options: WorkerOptions) {
       const observer = (async () => {
         while (!stopped) {
           try {
-            const events = ownEvents(await exportEvents());
-            // Some CLIs flush the final assistant record only during SessionEnd.
-            // A real linked read plus completed inference permits graceful exit;
-            // final automatic capture is evaluated after native hooks finish.
-            if (linkedRead(events, secret) && provider!.state.completedSecrets.includes(secret)) {
-              await writeFile(completion, "automatic linked capture observed"); return;
+            // Native SessionEnd may flush both the read result and the answer.
+            // Permit graceful exit after inference completes; the PTY action
+            // also waits for its actual answer. All automatic capture gates
+            // remain strict and are evaluated after the native hooks finish.
+            if (provider!.state.completedSecrets.includes(secret)) {
+              if (name === "copilot") {
+                const rendered = await terminalScreen(await readFile(trace, "utf8"), [secret]);
+                if (!rendered.observedMarkers.includes(secret)) { await new Promise(done => setTimeout(done, 250)); continue; }
+              }
+              await writeFile(completion, "inference completed; awaiting native final capture"); return;
             }
-          } catch { /* bounded export can overlap an incremental hook write */ }
+          } catch { /* normal shutdown can overlap a completion marker write */ }
           await new Promise(done => setTimeout(done, 250));
         }
       })();
@@ -149,10 +157,17 @@ export async function verifyInstalledBridge(options: WorkerOptions) {
       // OpenCode's configured native controls expand tool output for inspection.
       if (mode === "native-import" && round === 0 && name === "claude-code") actions.push(
         { waitFor: TERMINAL_SYNTAX[name].ready, send: "\x0f", delayMs: 1000 },
-        { waitFor: "^", send: "[", delayMs: 750 }, { waitFor: "^", send: "\x1b", delayMs: 750 });
-      if (mode === "native-import" && round === 0 && (name === "opencode" || name === "kilo")) actions.push(
-        { waitFor: TERMINAL_SYNTAX[name].ready, send: "\x0f", delayMs: 750 },
-        { waitFor: "^", send: "\x19", delayMs: 750 }, { waitFor: "^", send: "\x07", delayMs: 750 });
+        { waitFor: "^", send: "\x05", delayMs: 750 }, { waitFor: "^", send: "[", delayMs: 750 }, { waitFor: "^", send: "\x1b", delayMs: 750 });
+      if (mode === "native-import" && round === 0 && report.uiMode === "native-export") actions.push(
+        { waitFor: TERMINAL_SYNTAX[name].ready, send: "/export\r", delayMs: 1500 },
+        { waitFor: "^", send: "\r", delayMs: 1000 },
+        { waitFor: "Press return to confirm", send: "\r", delayMs: 1000 },
+        { waitFor: "^", send: "g", delayMs: 1000 },
+        ...Array.from({ length: 3 }, () => ({ waitFor: "^", send: " ", delayMs: 500 })),
+        { waitFor: "^", send: "q", delayMs: 1000 });
+      else if (mode === "native-import" && round === 0 && (name === "opencode" || name === "kilo")) actions.push(
+        { waitFor: TERMINAL_SYNTAX[name].ready, send: "\x0f", delayMs: 1500 },
+        { waitFor: "^", send: "\x19", delayMs: 750 }, { waitFor: "^", send: "\x07", delayMs: 1000 });
       const viewed = mode === "native-import" && round === 0 && ["claude-code", "opencode", "kilo"].includes(name);
       if (!native.initialInput && (round > 0 || mode === "native-import")) {
         const promptMarker = `TB_NEW_${randomUUID().slice(0, 8)}`;
@@ -161,7 +176,7 @@ export async function verifyInstalledBridge(options: WorkerOptions) {
         // resumed messages. Wait for that session's actual last answer first.
         // Viewing already established readiness; a retained footer may not be
         // repainted after scrolling, so do not wait for the same bytes again.
-        const ready = viewed ? "^" : name === "gemini-cli" ? (round > 0 ? "TB_DONE[\\s\\S]*" + previousSecret : assistantMarker) + "[\\s\\S]*Type your message" : TERMINAL_SYNTAX[name].ready;
+        const ready = viewed && report.uiMode !== "native-export" ? "^" : name === "gemini-cli" ? (round > 0 ? "TB_DONE[\\s\\S]*" + previousSecret : assistantMarker) + "[\\s\\S]*Type your message" : TERMINAL_SYNTAX[name].ready;
         actions.push({ waitFor: ready, send: `${promptMarker}. Read evidence.txt and report its exact contents; use the imported conversation as context.`, paste: bracketedPaste, delayMs: 1000 });
         // Readline-style editors may repaint one inserted character per cursor
         // move, so their raw echo need not contain the complete marker.
@@ -169,6 +184,7 @@ export async function verifyInstalledBridge(options: WorkerOptions) {
       }
       if (name === "openhands") actions.push({ waitFor: "^", waitForPath: completion, send: "\x11", delayMs: 750 });
       else if (name === "crush") actions.push({ waitFor: "TB_DONE[\\s\\S]*" + secret, waitForPath: completion, send: "\x03", delayMs: 500 }, { waitFor: "Are you sure you want to quit", send: "y" });
+      else if (name === "copilot") actions.push({ waitFor: "^", waitForPath: completion, send: TERMINAL_SYNTAX[name].quit, delayMs: 1000 }, { waitFor: "^", send: "\r", delayMs: 1000 });
       else if (name === "cline") actions.push({ waitFor: "^", waitForPath: completion, send: "/exit\r", paste: true, delayMs: 1000 });
       else actions.push({ waitFor: "TB_DONE[\\s\\S]*" + secret + (name === "gemini-cli" ? "[\\s\\S]*Ready \\(repo\\)" : ""), waitForPath: completion, send: TERMINAL_SYNTAX[name].quit, delayMs: 1000 },
         { waitFor: name === "gemini-cli" ? "Exit the cli" : "^", send: "\r", delayMs: 1000 });
@@ -196,7 +212,7 @@ export async function verifyInstalledBridge(options: WorkerOptions) {
       }
       let events = ownEvents(await exportEvents());
       const captureDeadline = Date.now() + 12_000;
-      while (normalExit && Date.now() < captureDeadline && !capturedCompletion(events, secret)) {
+      while (normalExit && Date.now() < captureDeadline && !(capturedCompletion(events, secret) && linkedRead(events, secret))) {
         await new Promise(done => setTimeout(done, 250)); events = ownEvents(await exportEvents());
       }
       await writeFile(join(root, `round-${round}-events.json`), JSON.stringify(events, null, 2));
@@ -212,7 +228,7 @@ export async function verifyInstalledBridge(options: WorkerOptions) {
         const convs = await listConversations(repo, { all: true });
         firstTarget = convs.find(conv => conv.source === name && conv.id !== summary.id && conv.events.some(event => JSON.stringify(event.content).includes(secret)));
         report.gates.lineage = !!firstTarget && graph.parentOf.get(firstTarget.id)?.source === summary.id;
-        if (firstTarget && report.gates.automaticCapture) await writeFile(join(root, "source-snapshot.json"), JSON.stringify({ summary: firstTarget, version: report.targetVersion, historyMarker, assistantMarker,
+        if (firstTarget && report.gates.automaticCapture) await writeFile(join(root, "source-snapshot.json"), JSON.stringify({ summary: firstTarget, version: report.targetVersion, uiMode: report.uiMode, historyMarker, assistantMarker,
           proof: "installed-capture", artifacts: report.artifacts, ledgerEvents: await exportEvents() } satisfies SourceSnapshot, null, 2));
         if (!firstTarget || !normalExit || !report.gates.automaticCapture || target.supportsNativeResume === false) break;
       } else {
@@ -223,7 +239,7 @@ export async function verifyInstalledBridge(options: WorkerOptions) {
     report.gates.normalExit = normalExit;
     const captured = firstTarget ?? (await listConversations(repo, { all: true })).find(conv => conv.source === name && conv.id !== summary.id);
     if (captured && report.gates.automaticCapture) {
-      await writeFile(join(root, "source-snapshot.json"), JSON.stringify({ summary: captured, version: report.targetVersion, historyMarker, assistantMarker,
+      await writeFile(join(root, "source-snapshot.json"), JSON.stringify({ summary: captured, version: report.targetVersion, uiMode: report.uiMode, historyMarker, assistantMarker,
         proof: "installed-capture", artifacts: report.artifacts, ledgerEvents: await exportEvents() } satisfies SourceSnapshot, null, 2));
     }
     if (target.supportsNativeResume === false) { report.status = "unsupported"; report.reason = "Exact-ID native resume is unavailable; inspect the individual bootstrap/capture gates"; return report; }

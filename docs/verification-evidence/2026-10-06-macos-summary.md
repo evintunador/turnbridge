@@ -5,9 +5,9 @@ model certification. Capture used clean merged cledger `f9853f7`; the hosted
 workflow also checks out the entire library dependency at that revision.
 A final local hub rerun used clean copies of both cledger and annals
 (`dcd06c0`), avoiding both dirty sibling working trees. Fresh captures and all
-twelve directed hub/mode scenarios passed, as did all 137 unit/integration tests.
+twelve directed hub/mode scenarios passed, as did all 139 unit/integration tests.
 
-- The full unit/integration suite passes 137 tests with zero skips, including
+- The full unit/integration suite passes 139 tests with zero skips, including
   real terminal keyboard negotiation and user input cancelling delayed submission.
 - Actual captured Pi 0.87.1 history completed native import, context, a new linked
   read/result, automatic capture, lineage, exact native resume and normal exit in
@@ -62,8 +62,9 @@ and Claude native verification opens its transcript viewer for longer history.
 The corresponding installed regressions passed locally.
 
 The first complete hosted run passed five of six strict hub jobs. Its remaining
-OpenCode model-discovery fallback is retained as a failure; isolated fixtures
-now disable remote model catalog/plugin discovery for both OpenCode and Kilo.
+OpenCode model-discovery failure is retained in the artifacts. Isolated fixtures
+disable remote catalog/plugin discovery for reproducibility; this does not
+establish the cause of that intermittent failure.
 The run also exposed epoch-dated Continue turns: only the synthetic import
 notice is clamped to zero, preserving all real event timestamps. A real installed
 Continue→OpenCode native regression passed. A Crush terminal-discovery reply
@@ -81,3 +82,27 @@ OpenCode source captures passed every native continuation gate into Gemini,
 including exact-ID resume; Claude/OpenCode regressions used project paths with
 spaces, underscores and punctuation. Project registration uses the public CLI
 without modifying its registry. The full hosted run includes this eighth writer.
+
+An actual Codex→Gemini→Goose native chain passed every gate. The analogous
+Qwen chain passed continuation but initially failed standard-mode history
+viewing; the actual interactive screen-reader variant passed all gates. Source
+and target UI modes are recorded separately so the variant cannot replace that
+standard-mode failure. Qwen bootstrap plus exact native resume passed in the
+explicit accessibility mode too.
+
+A Linux Claude bootstrap failure exposed an exit/capture deadlock when native
+SessionEnd had not yet flushed the final read result. The corrected verifier
+permits graceful exit after completed inference and the actual TUI answer, then
+requires both linked read/result and visible assistant completion in the ledger.
+A disposable installed-Claude regression retaining only the native SessionEnd
+hook passed bootstrap, capture, lineage and second exact-ID resume without any
+manual capture or backfill. That hook-phase fixture is explicitly excluded from
+standard-configuration certification.
+
+Claude’s native show-all transcript control passed a longer captured Gemini
+history. Copilot continuation passed after final-answer readiness used the
+reconstructed screen, retaining a nonce split across cursor-addressed updates.
+
+Gemini→OpenCode passed every continuation gate using its public native `/export`
+viewer with interactive `less`, then returning to its restored composer. This
+`native-export` result remains separate from the default-scrolling failure.

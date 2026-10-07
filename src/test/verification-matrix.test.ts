@@ -68,3 +68,12 @@ test("reports keep the full denominator and retain blockers separately from pass
 test("canonical source fixtures cannot be promoted to bridge evidence", () => {
   assert.throws(() => validateEvidence({ ...passing(), sourceProof: "canonical-fixture" } as unknown as BridgeEvidence), /installed captured source/);
 });
+
+test("screen-reader evidence cannot supersede a standard UI failure or different source UI", () => {
+  const failed = passing({ status: "fail", reason: "older history hidden", uiMode: "standard" });
+  const accessible = passing({ uiMode: "screen-reader", observedAt: "2026-10-06T01:00:00Z" });
+  const accessibleSource = passing({ sourceUiMode: "screen-reader" });
+  const exported = passing({ uiMode: "native-export" });
+  assert.equal(latestEvidence([failed, accessible, accessibleSource, exported]).length, 4);
+  assert.throws(() => validateEvidence({ ...passing(), uiMode: "unknown" } as unknown as BridgeEvidence), /Unknown UI mode/);
+});
