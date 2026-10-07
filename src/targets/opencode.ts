@@ -1,4 +1,5 @@
 import { spawnSync } from "node:child_process";
+import { toolInput } from "../tool-input.js";
 import { randomUUID } from "node:crypto";
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
@@ -55,8 +56,8 @@ const VALIDATED_VERSION_PREFIXES = ["1.18."];
 /** Fallback project when the launch directory maps to no known opencode project. */
 const GLOBAL_PROJECT_ID = "global";
 
-function opencodeVersion(): string | null {
-  const result = spawnSync("opencode", ["--version"], { encoding: "utf8" });
+function opencodeVersion(binary = "opencode"): string | null {
+  const result = spawnSync(binary, ["--version"], { encoding: "utf8", timeout: 10_000 });
   if (result.status !== 0) return null;
   const match = result.stdout.match(/(\d+\.\d+\.\d+)/);
   return match ? match[1]! : null;
@@ -74,8 +75,8 @@ function opencodeVersion(): string | null {
  * unconditionally; it works, but the session then shows up in *every*
  * project's list, so it is a fallback and not the default.
  */
-function projectIdFor(cwd: string): string | null {
-  const result = spawnSync("opencode", ["debug", "scrap"], { encoding: "utf8", cwd });
+function projectIdFor(cwd: string, binary = "opencode"): string | null {
+  const result = spawnSync(binary, ["debug", "scrap"], { encoding: "utf8", cwd, timeout: 10_000 });
   if (result.status !== 0) return null;
   try {
     const projects = JSON.parse(result.stdout) as Array<{ id?: string; worktree?: string }>;
@@ -341,7 +342,7 @@ function convertBlocksToParts(blocks: TurnBlock[], opts: ConvertOptions): Import
           // of them fails the whole import with `Missing key at ["state"][...]`.
           state: {
             status: "completed",
-            input: block.input ?? {},
+            input: toolInput(block.input),
             // The real recorded output when the conversation carried it. This is
             // history the model reads, never a call to re-run.
             output: results.get(callId) ?? "[historical tool call — output not captured]",
@@ -465,7 +466,9 @@ export function buildImportPayload(
   // trailing user message with no reply renders as a QUEUED prompt. Backdating
   // it just ahead of the oldest turn is what puts it where it reads as a
   // preamble; nothing about resume depends on the notice being newest.
-  const noticeMs = earliestEventMs(summary, now) - 1;
+  // Native schemas forbid negative times. At the epoch, our ordered message
+  // IDs still place the synthetic notice first without changing any real turn.
+  const noticeMs = Math.max(0, earliestEventMs(summary, now) - 1);
   const noticeText =
     `[turnbridge import notice] This conversation was imported from ${importSourceLabel(summary)}. ` +
     "The history below is the literal visible transcript. Past tool calls are replayed as history " +
@@ -589,9 +592,15 @@ export function buildImportPayload(
 }
 
 /** `provider/model` entries as `opencode models` prints them, one per line. */
-function availableModels(cwd: string): string[] {
-  const result = spawnSync("opencode", ["models"], { encoding: "utf8", cwd });
-  if (result.status !== 0) return [];
+function availableModels(cwd: string, binary = "opencode", name: "opencode" | "kilo" = "opencode"): string[] {
+  const result = spawnSync(binary, ["models"], { encoding: "utf8", cwd, timeout: 30_000 });
+  if (result.status !== 0) {
+    const code = (result.error as NodeJS.ErrnoException | undefined)?.code;
+    throw new FabricationUnsupportedError(
+      `${binary} models failed (${code ?? result.signal ?? `exit ${result.status}`}); cannot select a dispatchable native model`,
+      name, "environment",
+    );
+  }
   return (result.stdout ?? "")
     .split("\n")
     .map((line) => line.trim())
@@ -600,31 +609,34 @@ function availableModels(cwd: string): string[] {
 
 /** HEAD of the launch repo, for the step parts. Absent outside a git repo. */
 function headSnapshot(cwd: string): string | undefined {
-  const result = spawnSync("git", ["rev-parse", "HEAD"], { encoding: "utf8", cwd });
+  const result = spawnSync("git", ["rev-parse", "HEAD"], { encoding: "utf8", cwd, timeout: 10_000 });
   if (result.status !== 0) return undefined;
   const sha = (result.stdout ?? "").trim();
   return /^[0-9a-f]{40}$/.test(sha) ? sha : undefined;
 }
 
 /** Best-effort removal of a session a failed import left half-written. */
-function deleteSession(sessionId: string, cwd: string): void {
-  spawnSync("opencode", ["session", "delete", sessionId], { encoding: "utf8", cwd });
+function deleteSession(sessionId: string, cwd: string, binary = "opencode"): void {
+  spawnSync(binary, ["session", "delete", sessionId], { encoding: "utf8", cwd, timeout: 10_000 });
 }
 
-export const opencodeTarget: TargetAdapter = {
-  name: "opencode",
-  binary: "opencode",
+export function createOpenCodeTarget(name: "opencode" | "kilo" = "opencode"): TargetAdapter {
+  const binary = name;
+  const prefixes = name === "opencode" ? VALIDATED_VERSION_PREFIXES : ["7.8."];
+  return {
+  name,
+  binary, supportsNativeImport: true,
 
   isInstalled() {
-    return binaryOnPath("opencode");
+    return binaryOnPath(binary);
   },
 
   nativeResume(sessionId: string, cwd: string): LaunchPlan {
     return {
-      command: "opencode",
+      command: binary,
       args: ["-s", sessionId],
       cwd,
-      notes: [`resuming native OpenCode session ${sessionId}`],
+      notes: [`resuming native ${cliLabel(name)} session ${sessionId}`],
     };
   },
 
@@ -633,20 +645,20 @@ export const opencodeTarget: TargetAdapter = {
     cwd: string,
     opts: { replayReasoning: boolean },
   ): Promise<LaunchPlan> {
-    const version = opencodeVersion();
+    const version = opencodeVersion(binary);
     if (!version) {
-      throw new FabricationUnsupportedError("could not determine opencode version", "opencode");
+      throw new FabricationUnsupportedError("could not determine opencode version", name, "environment");
     }
     const notes: string[] = [];
-    if (!VALIDATED_VERSION_PREFIXES.some((p) => version.startsWith(p))) {
+    if (!prefixes.some((p) => version.startsWith(p))) {
       notes.push(
         `opencode ${version} has not been validated against the fabrication spec ` +
-          `(validated: ${VALIDATED_VERSION_PREFIXES.map((p) => `${p}x`).join(", ")}); ` +
+          `(validated: ${prefixes.map((p) => `${p}x`).join(", ")}); ` +
           "rerun with --bootstrap if the resumed session misbehaves",
       );
     }
 
-    const projectId = projectIdFor(cwd);
+    const projectId = projectIdFor(cwd, binary);
     if (!projectId) {
       notes.push(
         `no opencode project registered for ${cwd}; filing the bridged session under the ` +
@@ -658,12 +670,12 @@ export const opencodeTarget: TargetAdapter = {
     // unresolvable id is fatal to continuation rather than cosmetic. If we
     // cannot learn what this install can run, fabrication is not safe — fall
     // back to bootstrap instead of writing a session that cannot answer.
-    const model = resolveModel(sourceModels(summary), availableModels(cwd));
+    const model = resolveModel(sourceModels(summary), availableModels(cwd, binary, name));
     if (!model) {
       throw new FabricationUnsupportedError(
         "could not list opencode models, so the fabricated session would have no provider " +
           "opencode can dispatch with",
-        "opencode",
+        name, "environment",
       );
     }
     const substitutionNote = modelSubstitutionNote(model);
@@ -685,31 +697,31 @@ export const opencodeTarget: TargetAdapter = {
     });
 
     const dir = join(configDir(), "imports");
-    await mkdir(dir, { recursive: true });
+    await mkdir(dir, { recursive: true, mode: 0o700 });
     const path = join(dir, `${sessionId}.json`);
     const body = JSON.stringify(payload, null, 2);
-    await writeFile(path, body);
+    await writeFile(path, body, { mode: 0o600, flag: "wx" });
 
-    const importResult = spawnSync("opencode", ["import", path], { encoding: "utf8", cwd });
+    const importResult = spawnSync(binary, ["import", path], { encoding: "utf8", cwd, timeout: 30_000 });
     const stdout = importResult.stdout ?? "";
     const importedId = stdout.match(/Imported session: (\S+)/)?.[1];
     if (importResult.status !== 0 || !importedId) {
       // Import is not atomic: a payload rejected part-way leaves a truncated
       // session in the DB. Drop it rather than leaving a half-conversation in
       // the user's picker, then let resume fall back to bootstrap.
-      deleteSession(sessionId, cwd);
+      deleteSession(sessionId, cwd, binary);
       const detail =
         importResult.status !== 0
           ? importResult.stderr || stdout || "unknown error"
           : `unrecognized import output: ${stdout.trim() || "(empty)"}`;
       throw new FabricationUnsupportedError(
         `opencode import failed (${detail.trim().replace(/\s+/g, " ")}); payload kept at ${path}`,
-        "opencode",
+        name,
       );
     }
 
     notes.push(
-      `fabricated OpenCode session ${importedId} from ${cliLabel(summary.source)} history ` +
+      `fabricated ${cliLabel(name)} session ${importedId} from ${cliLabel(summary.source)} history ` +
         `(${summary.turnCount} turns)`,
       `import file: ${path} (${formatSize(transcriptSize(body))})`,
     );
@@ -722,26 +734,29 @@ export const opencodeTarget: TargetAdapter = {
     }
 
     return {
-      command: "opencode",
+      command: binary,
       args: ["-s", importedId],
       cwd,
       notes,
       // the id opencode actually stored, so the lineage record names the
       // session the user will be continuing in
-      fabricatedConversationId: `opencode:${importedId}`,
+      fabricatedConversationId: `${name}:${importedId}`,
       importedSourceEventIds,
     };
   },
 
   bootstrap(summary: ConversationSummary, cwd: string, transcriptPath: string): LaunchPlan {
     return {
-      command: "opencode",
-      args: ["run", bootstrapPrompt(summary, transcriptPath)],
+      command: binary,
+      args: ["--prompt", bootstrapPrompt(summary, transcriptPath)],
       cwd,
       notes: [
-        `starting a NEW OpenCode session rehydrated from ${cliLabel(summary.source)} (bootstrap mode)`,
+        `starting a NEW ${cliLabel(name)} session rehydrated from ${cliLabel(summary.source)} (bootstrap mode)`,
         `transcript: ${transcriptPath}`,
       ],
     };
   },
 };
+}
+
+export const opencodeTarget = createOpenCodeTarget();

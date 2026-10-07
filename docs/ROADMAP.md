@@ -6,13 +6,15 @@ being repeated here.
 
 ## CLI coverage
 
-- Verify bridging **out of** Gemini CLI and Qwen Code conversations captured by
-  cledger, then document the supported behavior.
-- Add Gemini CLI and Qwen Code target adapters so those CLIs can also be
-  bridged **into**. Until then they may appear as source conversations but are
-  intentionally one-way.
-- Once every intended CLI has a target adapter, run a small credentialed
-  support matrix against each provider and record the tested CLI versions.
+- All twenty roster targets now have bootstrap adapters; Claude, Codex, OpenCode,
+  Pi, Qwen, Gemini, Goose and Kilo have native import writers. Continue expanding exact-version
+  evidence through the [CLI integration program](CLI_INTEGRATION_PROGRAM.md).
+- Resolve upstream authentication/runtime blockers and exact-ID resume limitations
+  without hiding them in the matrix. Keep unsupported native imports separate
+  from usable bootstrap paths.
+- Run configured local-model canaries and explicitly bounded paid-provider checks
+  after scripted installed coverage. Live provider canaries are configured explicitly and have not yet been run.
+- Add screen layout evaluation beyond retained reconstructed terminal screens.
 
 ## Adapter validation
 
@@ -31,8 +33,9 @@ being repeated here.
   dependency with a semver range, and then publish turnbridge. The
   `prepublishOnly` check deliberately blocks publishing before this is done.
 - Re-run the interactive, recall, invariant, large-history, function-call, and
-  picker probes against the release CLI versions. Adapter-drift automation
-  remains reporting-only; credentialed validation is a human-run release task.
+  picker probes against the release CLI versions. Scheduled candidate maintenance opens draft evidence proposals; runtime pins
+  advance only after both-OS bridge evidence and maintainer review. Credentialed
+  validation remains a separate release task.
 
 ## Research backlog
 
@@ -43,4 +46,3 @@ These are non-blocking unknowns, not current release requirements:
 - Claude Code's picker sort key.
 - opencode's project-id derivation if a future release makes it relevant to
   import placement.
-

@@ -1,0 +1,118 @@
+name: Installed interactive bridges
+on:
+  pull_request:
+    paths: ['src/**', 'scripts/**', 'verification/**', 'package*.json', '.github/workflows/installed-bridges.yml']
+  workflow_dispatch:
+  workflow_call:
+    inputs:
+      candidates:
+        type: boolean
+        default: false
+permissions:
+  contents: read
+concurrency:
+  group: installed-bridges-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+jobs:
+  candidate-plan:
+    if: inputs.candidates == true
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.19.0'
+      - run: node scripts/runtime-candidates.mjs candidates.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cli-candidate-plan
+          path: candidates.json
+          retention-days: 14
+  verify:
+    needs: candidate-plan
+    if: ${{ !cancelled() && (needs.candidate-plan.result == 'success' || needs.candidate-plan.result == 'skipped') }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+        hub: [claude-code, codex, opencode]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: turnbridge
+      - uses: actions/checkout@v4
+        with:
+          repository: evintunador/conversation-ledger
+          ref: f9853f7b38ee1fefdb587748055a18e240efb48c
+          path: conversation-ledger
+      - uses: actions/checkout@v4
+        with:
+          repository: evintunador/annals
+          ref: dcd06c0f724cf3509b2d61dce7d0b537d4d86340
+          path: annals
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.19.0'
+      - uses: astral-sh/setup-uv@v6
+      - name: Native sandbox prerequisites (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update && sudo apt-get install -y sqlite3 ripgrep less
+          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+          unshare --user --map-root-user true
+      - name: Native prerequisites (macOS)
+        if: runner.os == 'macOS'
+        run: brew install sqlite ripgrep
+      - run: npm ci
+        working-directory: annals
+      - run: npm ci
+        working-directory: conversation-ledger
+      - run: npm ci && npm test
+        working-directory: turnbridge
+      - name: Load the same candidate release plan on both OSes
+        if: inputs.candidates == true
+        uses: actions/download-artifact@v4
+        with:
+          name: cli-candidate-plan
+          path: ${{ runner.temp }}
+      - name: Provision exact runtimes in disposable directories
+        working-directory: turnbridge
+        env:
+          CANDIDATES: ${{ inputs.candidates }}
+        run: |
+          args=()
+          if [ "$CANDIDATES" = true ]; then args=("$RUNNER_TEMP/candidates.json"); fi
+          node scripts/provision-runtimes.mjs ../conversation-ledger "$RUNNER_TEMP/runtimes" "${args[@]}"
+          node ../conversation-ledger/dist/verification/native-runtimes.js "$RUNNER_TEMP/native-runtimes"
+          sed -e 's/^CLEDGER_VERIFY_/TURNBRIDGE_VERIFY_/' -e 's/^TURNBRIDGE_VERIFY_AIDER_BINARY=/TURNBRIDGE_AIDER_PYTHON=/' "$RUNNER_TEMP/native-runtimes/native-runtimes.env" >> "$GITHUB_ENV"
+          uv venv --python 3.12 "$RUNNER_TEMP/vibe"
+          uv pip install --python "$RUNNER_TEMP/vibe/bin/python" mistral-vibe==2.25.8
+          uv pip freeze --python "$RUNNER_TEMP/vibe/bin/python" > "$RUNNER_TEMP/vibe-installed.txt"
+      - name: Test captured installed sources in both hub directions
+        working-directory: turnbridge
+        env:
+          TURNBRIDGE_VERIFY_MISTRAL_VIBE_BINARY: ${{ runner.temp }}/vibe/bin/vibe
+        run: |
+          node dist/verification/program.js --cledger "$GITHUB_WORKSPACE/conversation-ledger/dist/cli.js" \
+            --runtime-dir "$RUNNER_TEMP/runtimes" --hub '${{ matrix.hub }}' --require-core true --output "$RUNNER_TEMP/evidence"
+      - name: Retain results including failures and blocked routes
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: bridge-evidence-${{ matrix.os }}-${{ matrix.hub }}
+          retention-days: 14
+          path: |
+            ${{ runner.temp }}/evidence/*.json
+            ${{ runner.temp }}/evidence/*/*.json
+            ${{ runner.temp }}/evidence/*/*.log
+            ${{ runner.temp }}/evidence/*/*.svg
+            ${{ runner.temp }}/evidence/*/*-screen.txt
+            ${{ runner.temp }}/runtimes/runtimes.json
+            ${{ runner.temp }}/runtimes/foundation.json
+            ${{ runner.temp }}/runtimes/*/package-lock.json
+            ${{ runner.temp }}/native-runtimes/native-runtimes.json
+            ${{ runner.temp }}/native-runtimes/*/cledger-installed.txt
+            ${{ runner.temp }}/vibe-installed.txt
+            ${{ runner.temp }}/candidates.json

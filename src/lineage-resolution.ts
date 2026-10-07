@@ -78,8 +78,10 @@ export function resolveLineageHistory(
     }
 
     const copied = selectedEvents.filter((event) => atOrBefore(event, parent.occurredAt));
-    const originatedHere = selectedEvents.filter((event) => !atOrBefore(event, parent.occurredAt));
-    if (copied.length === 0) return originatedHere;
+    const originatedHere = parent.mode === "bootstrap"
+      ? selectedEvents.filter(event => event.id !== parent.bootstrapPromptEventId)
+      : selectedEvents.filter((event) => !atOrBefore(event, parent.occurredAt));
+    if (copied.length === 0 && parent.mode !== "bootstrap") return originatedHere;
 
     resolving.add(summary.id);
     let origins: EvidenceEvent[] | null = null;
