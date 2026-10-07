@@ -3,7 +3,7 @@
 Lossless visible-conversation continuity between coding agent CLIs.
 
 [Conversation Ledger](https://github.com/evintunador/conversation-ledger)
-captures native local transcripts (Claude Code, Codex, opencode) incrementally into git
+captures native local transcripts across its twenty-CLI roster incrementally into git
 notes. Turnbridge is the resume layer on top: one picker across CLIs, honest
 session typing, and rehydration of a conversation into a *different* CLI —
 without claiming to transfer hidden reasoning or provider-private state, except
@@ -23,6 +23,9 @@ turnbridge resume            # interactive: choose conversation, then target CLI
 turnbridge resume codex      # resume straight into Codex
 turnbridge resume claude     # resume straight into Claude Code
 turnbridge resume opencode   # resume straight into opencode
+turnbridge resume qwen       # native visible-text import where format supported
+turnbridge resume gemini     # transcript bootstrap
+turnbridge targets           # list implemented routes for all twenty targets
 turnbridge list              # print compatible conversations
 turnbridge records --help    # shared cledger records maintenance commands
 
@@ -60,7 +63,7 @@ annals profile add conversation-ledger \
   --cli-name cledger
 ```
 
-Same-CLI selections use the CLI's native resume. Cross-CLI selections write a
+Same-CLI selections use exact native resume when implemented; Aider and Continue use transcript bootstrap because their current adapters cannot select an exact native session ID. Cross-CLI selections write a
 target-native session file and hand off to the target's own resume; when that
 is unsupported for the installed CLI version, turnbridge falls back to a fresh
 session bootstrapped with the literal transcript.
@@ -102,7 +105,43 @@ See [product intent](docs/PRODUCT_INTENT.md), the
 ```sh
 npm install   # links ../conversation-ledger
 npm test      # build + node --test
+npm run verify:plan # planned installed-TUI hub matrix (does not launch CLIs)
 ```
+
+The [CLI integration program](docs/CLI_INTEGRATION_PROGRAM.md) documents the
+implemented twenty-target roster, exact-version evidence and known limitations.
+Claude, Codex, OpenCode, Pi, Qwen, Goose and Kilo have native import writers; every
+roster target has a transcript bootstrap route. Implemented syntax is distinct
+from installed certification: authentication blockers, native runtime failures,
+and untested versions remain visible in the reports.
+
+```sh
+npm run verify:installed -- --cledger /clean/cledger/dist/cli.js --only codex,opencode --mode native-import --output /tmp/tb-evidence
+npm run verify:program -- --cledger /clean/cledger/dist/cli.js --runtime-dir /tmp/pinned-clis --output /tmp/tb-matrix
+npm run verify:report -- /tmp/tb-matrix/evidence.json
+```
+
+Tests use disposable profiles, a bounded local scripted provider, real installed
+CLIs and actual PTYs. They retain terminal traces, reconstructed SVG screens,
+provider requests and automatically captured records; they never backfill a
+failed capture to obtain a pass. Hub campaigns exercise both directions through
+Claude/Codex/OpenCode on macOS and Linux. Scheduled candidate reviews create
+draft evidence proposals without promoting pins or merging automatically.
+
+For a contributor's local model, pass `--local-model config.json` to
+`verify:installed`. The JSON must specify a loopback `endpoint` (server root),
+`model`, and `protocol` (`messages`, `responses`, `chat-completions` or `gemini`).
+Optional `maxRequests`, `maxOutputTokens` and `timeoutMs` bound the canary.
+Each CLI keeps its native protocol; incompatible configurations fail explicitly.
+Paid canaries require `--provider-config` with `tier: "usual-provider"`, HTTPS
+endpoint, protocol/model, `budgetUsd`, explicit `inputUsdPerMillionTokens` and
+`outputUsdPerMillionTokens`, and `apiKeyEnv: "TURNBRIDGE_VERIFY_PROVIDER_API_KEY"`.
+Set that dedicated environment variable yourself; ordinary account credentials
+are never inherited. Requests reserve a conservative text/token estimate before
+inference and reject multimodal inputs. Supplied prices determine the estimate;
+it is not a vendor billing guarantee. Paid and local-model evidence remain
+separate from scripted passes. Neither live tier has been certified in this run.
+Full visual layout judging remains separate work.
 
 ## License
 

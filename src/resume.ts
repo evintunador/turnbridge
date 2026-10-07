@@ -1,10 +1,12 @@
 import { findRepo, gitUserIdentity, type RepoInfo } from "conversation-ledger";
+import { randomUUID } from "node:crypto";
+import { recordPendingBootstrap, reconcileBootstrapContinuations } from "./bootstrap-lineage.js";
 import { writeBootstrapTranscript } from "./bootstrap.js";
 import { loadConfig, saveConfig } from "./config.js";
 import { listConversations } from "./conversations.js";
 import { recordContinuation, readLineage, type Lineage } from "./lineage.js";
 import { resolveLineageHistory } from "./lineage-resolution.js";
-import { runLaunchPlan } from "./launch.js";
+import { runInteractiveLaunchPlan } from "./interactive-launch.js";
 import { withLedgerNotices } from "./ledger-io.js";
 import { confirm, pickFromList } from "./picker.js";
 import { installedTargets, targetFor } from "./targets/index.js";
@@ -78,7 +80,7 @@ async function chooseTarget(flags: ResumeFlags): Promise<TargetAdapter | null> {
 
   const installed = await installedTargets();
   if (installed.length === 0) {
-    process.stderr.write("turnbridge: no supported CLI found on PATH (claude, codex, opencode)\n");
+    process.stderr.write("turnbridge: no supported target CLI found on PATH (wrapper targets also need cledger)\n");
     return null;
   }
   if (installed.length === 1) return installed[0]!;
@@ -98,7 +100,7 @@ async function chooseTarget(flags: ResumeFlags): Promise<TargetAdapter | null> {
   return choice;
 }
 
-async function buildPlan(
+export async function buildPlan(
   repo: RepoInfo,
   target: TargetAdapter,
   summary: ConversationSummary,
@@ -108,7 +110,7 @@ async function buildPlan(
   availableConversations: ConversationSummary[],
   replayReasoning: boolean,
 ): Promise<LaunchPlan> {
-  if (target.name === summary.source && !useBootstrap) {
+  if (target.name === summary.source && !useBootstrap && target.supportsNativeResume !== false) {
     return target.nativeResume(summary.sessionId, cwd);
   }
   const history = lineage.parentOf.has(summary.id)
@@ -137,8 +139,12 @@ async function buildPlan(
       );
     }
   }
-  const transcript = await writeBootstrapTranscript(history.summary);
-  const plan = target.bootstrap(history.summary, cwd, transcript.path);
+  const bootstrapSummary = { ...history.summary, bootstrapToken: randomUUID() };
+  const transcript = await writeBootstrapTranscript(bootstrapSummary);
+  const plan = target.bootstrap(bootstrapSummary, cwd, transcript.path);
+  await recordPendingBootstrap(repo, { token: bootstrapSummary.bootstrapToken, source: summary.id, targetCli: target.name,
+    importedThroughSeq: Math.max(...summary.events.map(event => event.stream?.seq ?? 0), 0),
+    sourceEventIds: history.summary.events.map(event => event.id), version: turnbridgeVersion() });
   plan.notes.push(...history.notes);
   plan.notes.push(
     `transcript is ${formatSize(transcript.size)}; fitting it is the target CLI's own concern ` +
@@ -155,6 +161,7 @@ export async function resumeCommand(flags: ResumeFlags): Promise<number> {
     return 1;
   }
   const identity = await gitUserIdentity(repo);
+  await reconcileBootstrapContinuations(repo);
   // Sequential, not Promise.all: each ledger read may run lazy maintenance
   // (notes merge, re-anchor append) — concurrent calls race on the same
   // refs and cursor file. The second read's maintenance pass is a no-op.
@@ -218,5 +225,7 @@ export async function resumeCommand(flags: ResumeFlags): Promise<number> {
     availableConversations,
     replayReasoning,
   );
-  return runLaunchPlan(plan);
+  const code = await runInteractiveLaunchPlan(plan);
+  await reconcileBootstrapContinuations(repo);
+  return code;
 }

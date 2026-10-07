@@ -7,6 +7,8 @@ export interface LaunchPlan {
   cwd: string;
   /** Shown to the user before launch (session type honesty, warnings). */
   notes: string[];
+  /** Submit only at a known native composer. No approval/trust screens are accepted. */
+  initialInput?: { prompt: string; readiness: string; paste?: boolean };
   /**
    * Ledger conversation id the fabricated session will be captured under
    * (`<source>:<generated-session-id>`), when this plan fabricated one. The
@@ -22,6 +24,9 @@ export interface TargetAdapter {
   name: CliName;
   /** Executable name looked up on PATH. */
   binary: string;
+  /** Native resume by exact ID may be absent even when transcript bootstrap works. */
+  supportsNativeResume?: boolean;
+  supportsNativeImport?: boolean;
   isInstalled(): Promise<boolean>;
   /** Native resume for a conversation that originated in this CLI. */
   nativeResume(sessionId: string, cwd: string): LaunchPlan;

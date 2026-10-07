@@ -1,0 +1,75 @@
+{
+  "schema": "turnbridge-runtimes/1",
+  "cledger": "f9853f7b38ee1fefdb587748055a18e240efb48c",
+  "annals": "dcd06c0f724cf3509b2d61dce7d0b537d4d86340",
+  "npm": [
+    {
+      "cli": "continue",
+      "package": "@continuedev/cli",
+      "version": "1.5.47",
+      "binary": "cn"
+    },
+    {
+      "cli": "kilo",
+      "package": "@kilocode/cli",
+      "version": "7.8.1",
+      "binary": "kilo"
+    },
+    {
+      "cli": "cline",
+      "package": "cline",
+      "version": "3.0.65",
+      "binary": "cline"
+    },
+    {
+      "cli": "claude-code",
+      "package": "@anthropic-ai/claude-code",
+      "version": "2.1.284",
+      "binary": "claude"
+    },
+    {
+      "cli": "codex",
+      "package": "@openai/codex",
+      "version": "0.159.0",
+      "binary": "codex"
+    },
+    {
+      "cli": "gemini-cli",
+      "package": "@google/gemini-cli",
+      "version": "0.61.0",
+      "binary": "gemini"
+    },
+    {
+      "cli": "qwen-code",
+      "package": "@qwen-code/qwen-code",
+      "version": "0.24.6",
+      "binary": "qwen"
+    },
+    {
+      "cli": "opencode",
+      "package": "opencode-ai",
+      "version": "1.18.33",
+      "binary": "opencode"
+    },
+    {
+      "cli": "pi",
+      "package": "@earendil-works/pi-coding-agent",
+      "version": "0.87.1",
+      "binary": "pi"
+    },
+    {
+      "cli": "copilot",
+      "package": "@github/copilot",
+      "version": "1.0.89",
+      "binary": "copilot"
+    },
+    {
+      "cli": "kimi",
+      "package": "@moonshot-ai/kimi-code",
+      "version": "2.1.1",
+      "binary": "kimi"
+    }
+  ],
+  "nativeFoundation": "cledger checksum and Python hash locks at the pinned foundation",
+  "vibe": "2.25.8"
+}

@@ -4,12 +4,14 @@ import { asLedger, findRepo } from "conversation-ledger";
 import { resumeCommand, type ResumeFlags } from "./resume.js";
 import { shimInstall, shimStatus, shimUninstall } from "./shim.js";
 import { parseCliName } from "./types.js";
+import { targetCapabilities } from "./capabilities.js";
 
 const USAGE = `turnbridge — continue a coding-agent conversation in another CLI
 
 Usage:
-  turnbridge resume [claude|codex|opencode] [options]   pick a conversation and resume it
+  turnbridge resume [target-cli] [options]             pick a conversation and resume it
   turnbridge list [options]                            print compatible conversations
+  turnbridge targets [--json]                          show implemented target routes
   turnbridge shim install|uninstall|status             opt-in \`claude --resume\` interception
   turnbridge records <command>                         maintain shared cledger records
 
@@ -65,6 +67,15 @@ async function main(argv: string[]): Promise<number> {
   }
 
   if (command === "records") return recordsCommand(args);
+  if (command === "targets") {
+    if (args.some(arg => arg !== "--json")) { process.stderr.write("turnbridge: targets accepts only --json\n"); return 1; }
+    const capabilities = targetCapabilities();
+    process.stdout.write(args.includes("--json") ? JSON.stringify(capabilities, null, 2) + "\n" :
+      "CLI                  Native import  Exact resume  Bootstrap\n" + capabilities.map(cli =>
+        `${cli.id.padEnd(21)}${(cli.nativeImport ? "implemented" : "unavailable").padEnd(15)}${(cli.exactNativeResume ? "implemented" : "unavailable").padEnd(14)}implemented`).join("\n") +
+      "\nImplemented routes require installed-version checks; see verification evidence.\n");
+    return 0;
+  }
   const recordAlias = RECORD_ALIASES.get(command);
   if (recordAlias) return recordsCommand([recordAlias, ...args]);
 

@@ -465,3 +465,15 @@ test("a conversation with no visible user text still gets a usable picker title"
     await cleanup();
   }
 });
+
+test("Codex JSON-string arguments become a native object in imported tool state", async () => {
+  const result = await payloadFor([
+    { role: "user", blocks: [{ type: "text", text: "read a file" }] },
+    { role: "assistant", blocks: [{ type: "tool_use", id: "call-json", name: "exec_command", input: '{"cmd":"cat café.txt","login":false}' }] },
+    { role: "user", blocks: [{ type: "tool_result", tool_use_id: "call-json", content: "file contents" }] },
+  ]);
+  try {
+    const tool = result.payload.messages.flatMap(message => message.parts).find(part => part.type === "tool");
+    assert.deepEqual(tool?.state?.input, { cmd: "cat café.txt", login: false });
+  } finally { await result.cleanup(); }
+});

@@ -52,7 +52,7 @@ test("writes the transcript under <configDir>/bootstrap, sanitizing the conversa
   });
 });
 
-test("writing twice for the same conversation overwrites rather than appends", async () => {
+test("each bootstrap gets an immutable isolated transcript instead of overwriting another session's context", async () => {
   await withTurnbridgeHome(async () => {
     const repo = await makeTempRepo();
     try {
@@ -62,7 +62,8 @@ test("writing twice for the same conversation overwrites rather than appends", a
       const [summary] = await listConversations(repo, { all: true });
       const first = await writeBootstrapTranscript(summary!);
       const second = await writeBootstrapTranscript(summary!);
-      assert.equal(first.path, second.path);
+      assert.notEqual(first.path, second.path);
+      assert.equal(await readFile(first.path, "utf8"), await readFile(second.path, "utf8"));
 
       const written = await readFile(second.path, "utf8");
       assert.equal((written.match(/first pass/g) ?? []).length, 1);

@@ -1,0 +1,64 @@
+name: Review CLI integration candidates
+on:
+  schedule:
+    - cron: '31 8 1,15 * *'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  test-candidates:
+    uses: ./.github/workflows/installed-bridges.yml
+    with:
+      candidates: true
+  proposal:
+    needs: test-candidates
+    if: ${{ !cancelled() }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.19.0'
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: bridge-evidence-*
+          path: candidate-evidence
+      - uses: actions/download-artifact@v4
+        with:
+          name: cli-candidate-plan
+          path: candidate-plan
+      - name: Prepare a review proposal without promoting runtime pins
+        run: |
+          cp candidate-plan/candidates.json verification/candidates.json
+          node --input-type=module <<'JS'
+          import { readFileSync, writeFileSync, readdirSync } from 'node:fs';
+          const candidates = JSON.parse(readFileSync('verification/candidates.json'));
+          const reports = [];
+          function walk(path) {
+            for (const entry of readdirSync(path, {withFileTypes:true})) {
+              const next = `${path}/${entry.name}`;
+              if (entry.isDirectory()) walk(next);
+              else if (entry.name === 'evidence.json' || entry.name === 'observations.json') reports.push({path:next, report:JSON.parse(readFileSync(next))});
+            }
+          }
+          walk('candidate-evidence');
+          writeFileSync('verification/candidate-results.json', JSON.stringify({releases:candidates.releases, workflowRun:process.env.GITHUB_RUN_ID, reports}, null, 2)+'\n');
+          JS
+      - uses: peter-evans/create-pull-request@v7
+        with:
+          branch: automation/cli-integration-candidates
+          commit-message: 'Record candidate CLI releases and installed bridge observations'
+          title: 'Review candidate CLI integration updates'
+          draft: true
+          add-paths: |
+            verification/candidates.json
+            verification/candidate-results.json
+          body: |
+            Candidate releases were tested against the pinned merged cledger foundation on macOS and Linux using real installed interactive CLIs and a free scripted provider.
+
+            Review the recorded failures, blockers and unsupported routes before changing any runtime or adapter format pins. This draft proposes evidence for review; it does not promote pins or merge automatically. Native/Python release upgrades still need checksum and dependency-lock review.
+
+            Full terminal traces, reconstructed screens, provider requests and automatic capture records are attached to this workflow run's artifacts.

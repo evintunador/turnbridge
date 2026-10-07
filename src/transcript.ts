@@ -1,7 +1,7 @@
 import type { EvidenceEvent } from "conversation-ledger";
 import { cliLabel, turnContent, type ConversationSummary, type TurnBlock } from "./types.js";
 
-function blockToMarkdown(block: TurnBlock): string {
+export function blockToMarkdown(block: TurnBlock): string {
   switch (block.type) {
     case "text":
       return typeof block.text === "string" ? block.text : "";
@@ -32,6 +32,7 @@ function roleHeading(event: EvidenceEvent, role: string): string {
     return `## User${event.actor.display ? ` (${event.actor.display})` : ""}`;
   }
   if (role === "tool_result") return "## Tool result";
+  if (role === "system") return "## System";
   return `## Assistant${event.producer.model ? ` (${event.producer.model})` : ""}`;
 }
 

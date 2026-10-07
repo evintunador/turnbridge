@@ -51,6 +51,8 @@ test("builds a minimal valid rollout: session_meta + message response_items", as
     assert.equal(meta.payload["session_id"], NEW_ID);
     assert.equal(meta.payload["cwd"], "/work/dir");
     assert.equal(meta.payload["cli_version"], "0.144.6");
+    const local = buildRolloutLines(summary!, NEW_ID, "/work/dir", "0.159.0", new Date(), false, [], "local-provider");
+    assert.equal(local[0]!.payload["model_provider"], "local-provider");
 
     // import notice first, then the two turns — as model-context response_items
     const messages = lines
