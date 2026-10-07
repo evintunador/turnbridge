@@ -5,9 +5,9 @@ model certification. Capture used clean merged cledger `f9853f7`; the hosted
 workflow also checks out the entire library dependency at that revision.
 A final local hub rerun used clean copies of both cledger and annals
 (`dcd06c0`), avoiding both dirty sibling working trees. Fresh captures and all
-twelve directed hub/mode scenarios passed, as did all 128 unit/integration tests.
+twelve directed hub/mode scenarios passed, as did all 135 unit/integration tests.
 
-- The full unit/integration suite passes 128 tests with zero skips, including
+- The full unit/integration suite passes 135 tests with zero skips, including
   real terminal keyboard negotiation and user input cancelling delayed submission.
 - Actual captured Pi 0.87.1 history completed native import, context, a new linked
   read/result, automatic capture, lineage, exact native resume and normal exit in
@@ -54,3 +54,19 @@ failed, blocked and unsupported observations; this summary does not claim every
 route or Linux is verified. Reconstructed screens received visual inspection;
 full layout certification remains deferred. Live local and paid provider tiers
 have configuration and budget guards but have not been executed in this run.
+
+Hosted partial results exposed Qwen project-path encoding for underscores and
+punctuation. An installed regression run under a matching path passed after
+using Qwen's native sanitizer. Gemini resume waits for the restored composer,
+and Claude native verification opens its transcript viewer for longer history.
+The corresponding installed regressions passed locally.
+
+The first complete hosted run passed five of six strict hub jobs. Its remaining
+OpenCode model-discovery fallback is retained as a failure; isolated fixtures
+now disable remote model catalog/plugin discovery for both OpenCode and Kilo.
+The run also exposed epoch-dated Continue turns: only the synthetic import
+notice is clamped to zero, preserving all real event timestamps. A real installed
+Continue→OpenCode native regression passed. A Crush terminal-discovery reply
+previously cancelled delayed Enter; both the nested PTY regression and an
+installed OpenCode→Crush bootstrap/resume regression passed after correction.
+A corrected full hosted run will determine the final both-OS evidence.

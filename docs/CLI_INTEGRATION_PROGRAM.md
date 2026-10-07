@@ -110,5 +110,14 @@ an interactive prompt flag. Folder-trust input is forwarded before prompt
 submission; Turnbridge waits for a real composer and an echoed prompt. It never
 automatically accepts user trust/approval dialogs. Tests may accept only their
 synthetic fixture folders and enable benign reads for the scripted provider.
+Kilo's fixture sets [`snapshot: false`](https://kilo.ai/docs/code-with-ai/features/checkpoints)
+because hosted resume can stall in snapshot initialization before inference.
+Its reports explicitly exclude filesystem checkpoint/rollback behavior; normal
+Turnbridge launches retain the contributor's own native configuration.
 
 See the [initial macOS observations](verification-evidence/2026-10-06-macos-summary.md) for the current proof boundary.
+
+Live canaries assemble visible assistant text across streaming token events before
+checking completion. Hidden reasoning and tool-call arguments cannot satisfy that
+check. Inference still requires an explicitly configured local endpoint or a
+dedicated, budgeted provider configuration.

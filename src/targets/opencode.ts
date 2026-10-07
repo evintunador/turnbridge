@@ -466,7 +466,9 @@ export function buildImportPayload(
   // trailing user message with no reply renders as a QUEUED prompt. Backdating
   // it just ahead of the oldest turn is what puts it where it reads as a
   // preamble; nothing about resume depends on the notice being newest.
-  const noticeMs = earliestEventMs(summary, now) - 1;
+  // Native schemas forbid negative times. At the epoch, our ordered message
+  // IDs still place the synthetic notice first without changing any real turn.
+  const noticeMs = Math.max(0, earliestEventMs(summary, now) - 1);
   const noticeText =
     `[turnbridge import notice] This conversation was imported from ${importSourceLabel(summary)}. ` +
     "The history below is the literal visible transcript. Past tool calls are replayed as history " +
@@ -590,9 +592,15 @@ export function buildImportPayload(
 }
 
 /** `provider/model` entries as `opencode models` prints them, one per line. */
-function availableModels(cwd: string, binary = "opencode"): string[] {
+function availableModels(cwd: string, binary = "opencode", name: "opencode" | "kilo" = "opencode"): string[] {
   const result = spawnSync(binary, ["models"], { encoding: "utf8", cwd, timeout: 10_000 });
-  if (result.status !== 0) return [];
+  if (result.status !== 0) {
+    const code = (result.error as NodeJS.ErrnoException | undefined)?.code;
+    throw new FabricationUnsupportedError(
+      `${binary} models failed (${code ?? result.signal ?? `exit ${result.status}`}); cannot select a dispatchable native model`,
+      name,
+    );
+  }
   return (result.stdout ?? "")
     .split("\n")
     .map((line) => line.trim())
@@ -662,7 +670,7 @@ export function createOpenCodeTarget(name: "opencode" | "kilo" = "opencode"): Ta
     // unresolvable id is fatal to continuation rather than cosmetic. If we
     // cannot learn what this install can run, fabrication is not safe — fall
     // back to bootstrap instead of writing a session that cannot answer.
-    const model = resolveModel(sourceModels(summary), availableModels(cwd, binary));
+    const model = resolveModel(sourceModels(summary), availableModels(cwd, binary, name));
     if (!model) {
       throw new FabricationUnsupportedError(
         "could not list opencode models, so the fabricated session would have no provider " +

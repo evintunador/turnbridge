@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { buildTextImport } from "../targets/text-import.js";
+import { buildTextImport, qwenProjectId } from "../targets/text-import.js";
 import type { ConversationSummary } from "../types.js";
 
 const summary = {
@@ -11,6 +11,11 @@ const summary = {
     { kind: "reasoning", id: "opaque", occurred_at: "2026-01-01T00:00:03Z", content: { opaque: true } },
   ],
 } as unknown as ConversationSummary;
+
+test("Qwen session lookup handles hosted checkout underscores and punctuation", () => {
+  assert.equal(qwenProjectId("/home/runner/work/_temp/my.repo"), "-home-runner-work--temp-my-repo");
+  assert.equal(qwenProjectId("/private/tmp/café project"), "-private-tmp-caf--project");
+});
 
 for (const target of ["pi", "qwen-code"] as const) test(`${target} import keeps Unicode and structured text without forging executable calls`, () => {
   const payload = buildTextImport(summary, target, "session-id", "/fixture", "1.2.3");

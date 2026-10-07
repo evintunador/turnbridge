@@ -29,11 +29,15 @@ export async function runInteractiveLaunchPlan(plan: LaunchPlan): Promise<number
     let enterTimer: ReturnType<typeof setTimeout> | undefined;
     const decoder = new StringDecoder("utf8");
     const onInput = (bytes: Buffer | string) => {
+      const text = typeof bytes === "string" ? bytes : decoder.write(bytes);
+      // Terminal discovery replies travel through stdin too. Forward them to
+      // the native app without mistaking its terminal's response for typing.
+      const typing = text.replace(/\x1b\[(?:\?[\d;]*[cu]|\d+;\d+R)|\x1b\](?:10|11);[^\x07\x1b]*(?:\x07|\x1b\\)/g, "");
       // Once a person types, let them own the composer; do not race their input.
       // Folder trust happens before the composer. Forward that input without
       // cancelling the pending prompt; typing in the composer transfers ownership.
-      if (!submitted && (pasted || readiness.test(stripVTControlCharacters(output)))) { submitted = true; clearTimeout(timer); clearTimeout(enterTimer); process.stderr.write(`\r\nturnbridge: bootstrap prompt was not submitted automatically; paste:\r\n${input.prompt}\r\n`); }
-      child.write(typeof bytes === "string" ? bytes : decoder.write(bytes));
+      if (typing && !submitted && (pasted || readiness.test(stripVTControlCharacters(output)))) { submitted = true; clearTimeout(timer); clearTimeout(enterTimer); process.stderr.write(`\r\nturnbridge: bootstrap prompt was not submitted automatically; paste:\r\n${input.prompt}\r\n`); }
+      child.write(text);
     };
     const resize = () => child.resize(process.stdout.columns || 120, process.stdout.rows || 40);
     const terminate = () => child.kill();

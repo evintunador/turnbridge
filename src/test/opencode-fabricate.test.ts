@@ -477,3 +477,18 @@ test("Codex JSON-string arguments become a native object in imported tool state"
     assert.deepEqual(tool?.state?.input, { cmd: "cat café.txt", login: false });
   } finally { await result.cleanup(); }
 });
+
+
+test("epoch-dated history keeps real timestamps and a valid ordered import notice", async () => {
+  const repo = await makeTempRepo();
+  try {
+    await appendEvents(repo, [
+      { ...blockDraft(`claude-code:${SID}`, 0, "user", [{ type: "text", text: "epoch turn" }]), occurred_at: "1970-01-01T00:00:00.000Z" },
+      { ...blockDraft(`claude-code:${SID}`, 1, "assistant", [{ type: "text", text: "epoch answer" }]), occurred_at: "1970-01-01T00:00:00.001Z" },
+    ]);
+    const [summary] = await listConversations(repo, { all: true });
+    const payload = buildImportPayload(summary!, OPTS) as unknown as Payload;
+    assert.deepEqual(payload.messages.map(message => (message.info.time as { created: number }).created), [0, 0, 1]);
+    assert.ok(String(payload.messages[0]!.info.id) < String(payload.messages[1]!.info.id));
+  } finally { await cleanupRepo(repo); }
+});

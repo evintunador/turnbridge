@@ -37,3 +37,9 @@ OpenCode exposes [tool detail and output keybindings](https://opencode.ai/docs/k
 Test-only bindings and observed marker frames are retained as evidence. A screen
 layout certificate, attachment byte transfer and live-provider compatibility are
 separate claims.
+
+Qwen project directory names use `sanitizeCwd`: every character outside ASCII
+letters and digits becomes a hyphen (including underscores, spaces, periods and
+Unicode). This was checked against the installed 0.24.6 implementation and an
+actual import/resume under such a path; replacing only path separators fails on
+GitHub runner directories.

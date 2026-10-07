@@ -3,6 +3,7 @@ import { readFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import { forwardLocalModel, validateInferenceProvider, reservePaidRequest, type LocalModelConfig } from "./local-model.js";
 import type { CliName } from "../types.js";
+import { providerText } from "./provider-text.js";
 
 /** Protocol emitters adapted from cledger f9853f7 (MIT, Evin Tunador).
  * This model substitute only emits bounded read calls and never forwards requests.
@@ -46,7 +47,8 @@ export async function startBridgeProvider(cli: CliName, historyMarker: string, l
           if (!res.destroyed) res.write(chunk);
         }
         responseText += decoder.decode();
-        if (responseText.includes("TB_DONE") && responseText.includes(state.secret)) state.completedSecrets.push(state.secret);
+        const visible = providerText(responseText, local.protocol);
+        if (visible.includes("TB_DONE") && visible.includes(state.secret)) state.completedSecrets.push(state.secret);
         res.end(); return;
       }
       const results = JSON.stringify((rows as any[]).flatMap(row => {

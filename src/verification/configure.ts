@@ -26,9 +26,9 @@ export async function configureScriptedTarget(cli: CliName, root: string, repo: 
   }
   if (cli === "opencode" || cli === "kilo") {
     const home = join(root, "config", cli);
-    Object.assign(env, { OPENCODE_DISABLE_FFF: "1", KILO_DISABLE_AUTOUPDATE: "true", KILO_DISABLE_MODELS_FETCH: "true", KILO_DISABLE_DEFAULT_PLUGINS: "true", KILO_DISABLE_EXTERNAL_SKILLS: "true", KILO_DISABLE_LSP_DOWNLOAD: "true" });
+    Object.assign(env, { OPENCODE_DISABLE_FFF: "1", OPENCODE_DISABLE_MODELS_FETCH: "true", OPENCODE_DISABLE_DEFAULT_PLUGINS: "true", OPENCODE_DISABLE_EXTERNAL_SKILLS: "true", OPENCODE_DISABLE_LSP_DOWNLOAD: "true", OPENCODE_DISABLE_AUTOUPDATE: "true", KILO_DISABLE_AUTOUPDATE: "true", KILO_DISABLE_MODELS_FETCH: "true", KILO_DISABLE_DEFAULT_PLUGINS: "true", KILO_DISABLE_EXTERNAL_SKILLS: "true", KILO_DISABLE_LSP_DOWNLOAD: "true" });
     await json(join(home, "tui.json"), { theme: "opencode", keybinds: { tool_details: "ctrl+o", session_toggle_generic_tool_output: "ctrl+y", session_first: "ctrl+g" } });
-    await json(join(home, cli + ".json"), { enabled_providers: ["verification"], model: "verification/fixture", small_model: "verification/fixture", share: "disabled",
+    await json(join(home, cli + ".json"), { ...(cli === "kilo" ? { snapshot: false } : {}), enabled_providers: ["verification"], model: "verification/fixture", small_model: "verification/fixture", share: "disabled",
       permission: { "*": "deny", read: "allow", external_directory: { [join(root, ".turnbridge", "bootstrap", "*")]: "allow" } }, provider: { verification: { npm: "@ai-sdk/openai-compatible", options: { baseURL: endpoint + "/v1", apiKey: "TESTONLY-fixture" },
         models: { fixture: { name: "fixture", limit: { context: 65536, output: 2048 } } } } } });
     return [];

@@ -19,6 +19,11 @@ export function foldedTurns(summary: ConversationSummary) {
   });
 }
 
+/** Qwen 0.24's sanitizeCwd replaces every non-ASCII-alphanumeric character. */
+export function qwenProjectId(cwd: string): string {
+  return (process.platform === "win32" ? cwd.toLowerCase() : cwd).replace(/[^a-zA-Z0-9]/g, "-");
+}
+
 export function buildTextImport(summary: ConversationSummary, target: "pi" | "qwen-code", sessionId: string, cwd: string, version: string) {
   const rows = [{ role: "user" as const, text: `[turnbridge import notice] Visible conversation imported from ${importSourceLabel(summary)}. Foreign tool calls/results and thinking are labeled text. This session has no original hidden state.`,
     eventId: "", timestamp: "2000-01-01T00:00:00.000Z" }, ...foldedTurns(summary)];
@@ -48,7 +53,7 @@ export function textImportTarget(name: "pi" | "qwen-code"): TargetAdapter {
     const id = randomUUID(), now = new Date().toISOString();
     const directory = name === "pi"
       ? join(process.env.PI_CODING_AGENT_DIR ?? join(homedir(), ".pi", "agent"), "sessions", `--${resolve(cwd).replace(/^[/\\]/, "").replace(/[/\\:]/g, "-")}--`)
-      : join(process.env.QWEN_RUNTIME_DIR ?? join(homedir(), ".qwen"), "projects", cwd.replace(/[/.]/g, "-"), "chats");
+      : join(process.env.QWEN_RUNTIME_DIR ?? join(homedir(), ".qwen"), "projects", qwenProjectId(cwd), "chats");
     await mkdir(directory, { recursive: true });
     const path = join(directory, name === "pi" ? `${now.replace(/[:.]/g, "-")}_${id}.jsonl` : `${id}.jsonl`);
     const payload = buildTextImport(summary, name, id, cwd, version);

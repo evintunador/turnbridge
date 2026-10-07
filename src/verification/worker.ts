@@ -3,7 +3,6 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { appendEvents, findRepo, type EvidenceEvent } from "conversation-ledger";
-import { resolveLineageHistory } from "../lineage-resolution.js";
 import { listConversations } from "../conversations.js";
 import { targets } from "../targets/index.js";
 import { buildPlan } from "../resume.js";
@@ -41,6 +40,15 @@ function linkedRead(events: EvidenceEvent[], secret: string): boolean {
   return blocks.some(block => block.type === "tool_result" && calls.has(block.tool_use_id) && block.is_error !== true && JSON.stringify(block.content).includes(secret));
 }
 
+export function capturedCompletion(events: EvidenceEvent[], secret: string): boolean {
+  return events.some(event => {
+    const content = turnContent(event);
+    if (content?.role !== "assistant") return false;
+    const text = content.blocks.filter(block => block.type === "text" && typeof block.text === "string").map(block => block.text).join("");
+    return text.includes("TB_DONE") && text.includes(secret);
+  });
+}
+
 export async function verifyInstalledBridge(options: WorkerOptions) {
   const { root, target: name, mode } = options;
   const repoPath = join(root, "repo"), reportPath = join(root, "report.json");
@@ -48,7 +56,7 @@ export async function verifyInstalledBridge(options: WorkerOptions) {
     terminal: "interactive", tier: options.localModel?.tier ?? (options.localModel ? "local-model" : "scripted"), sourceProof: options.sourceFile ? "installed-capture" : "canonical-fixture",
     certification: options.sourceFile ? "installed-bridge" : "installed-target-smoke",
     sourceVersion: "fixture", targetVersion: "unknown", status: "blocked", gates: {} as Partial<Record<Gate, boolean>>, reason: "", artifacts: [] as string[],
-    observedAt: new Date().toISOString(), exclusions: [...(options.localModel ? [] : ["live model/provider behavior"]), "full visual layout certification", "other CLI versions", "other operating systems"] };
+    observedAt: new Date().toISOString(), exclusions: [...(options.localModel ? [] : ["live model/provider behavior"]), ...(name === "kilo" ? ["filesystem snapshots/checkpoints (disabled in the isolated read-only fixture)"] : []), "full visual layout certification", "other CLI versions", "other operating systems"] };
   let provider: Awaited<ReturnType<typeof startBridgeProvider>> | undefined;
   const checked = async (command: string, args: string[], timeoutMs = 20_000) => {
     const result = await runProcess(command, args, { cwd: repoPath, env: process.env, timeoutMs });
@@ -96,8 +104,6 @@ export async function verifyInstalledBridge(options: WorkerOptions) {
     await checked(process.execPath, [options.cledger, "install", name]);
     process.chdir(repoPath);
     const lineage = await readLineage(repo, true);
-    const visibleHistory = resolveLineageHistory(summary, sources, lineage).summary.events.flatMap(event => turnContent(event)?.blocks ?? []).filter(block => block.type === "text").map(block => String(block.text)).join("\n");
-    const needsViewing = ![historyMarker, assistantMarker].every(marker => visibleHistory.includes(marker));
     const plan = await buildPlan(repo, target, summary, repoPath, mode === "bootstrap", lineage, sources, false);
     if (mode === "native-import" && !plan.fabricatedConversationId) { report.status = "unsupported"; report.reason = "Installed version cannot fabricate native history; planner selected bootstrap"; return report; }
     provider.state.transcriptPath = plan.notes.find(note => note.startsWith("transcript: "))?.slice("transcript: ".length) ?? "";
@@ -141,13 +147,13 @@ export async function verifyInstalledBridge(options: WorkerOptions) {
       // Viewing controls never alter the imported history or manufacture it.
       // Claude's transcript viewer writes full history to native scrollback;
       // OpenCode's configured native controls expand tool output for inspection.
-      if (mode === "native-import" && round === 0 && needsViewing && name === "claude-code") actions.push(
+      if (mode === "native-import" && round === 0 && name === "claude-code") actions.push(
         { waitFor: TERMINAL_SYNTAX[name].ready, send: "\x0f", delayMs: 1000 },
         { waitFor: "^", send: "[", delayMs: 750 }, { waitFor: "^", send: "\x1b", delayMs: 750 });
       if (mode === "native-import" && round === 0 && (name === "opencode" || name === "kilo")) actions.push(
         { waitFor: TERMINAL_SYNTAX[name].ready, send: "\x0f", delayMs: 750 },
         { waitFor: "^", send: "\x19", delayMs: 750 }, { waitFor: "^", send: "\x07", delayMs: 750 });
-      const viewed = mode === "native-import" && round === 0 && ((name === "claude-code" && needsViewing) || name === "opencode" || name === "kilo");
+      const viewed = mode === "native-import" && round === 0 && ["claude-code", "opencode", "kilo"].includes(name);
       if (!native.initialInput && (round > 0 || mode === "native-import")) {
         const promptMarker = `TB_NEW_${randomUUID().slice(0, 8)}`;
         const bracketedPaste = ["claude-code", "codex", "gemini-cli", "kimi", "open-interpreter", "goose"].includes(name);
@@ -155,7 +161,7 @@ export async function verifyInstalledBridge(options: WorkerOptions) {
         // resumed messages. Wait for that session's actual last answer first.
         // Viewing already established readiness; a retained footer may not be
         // repainted after scrolling, so do not wait for the same bytes again.
-        const ready = viewed ? "^" : name === "gemini-cli" && round > 0 ? "TB_DONE[\\s\\S]*" + previousSecret : TERMINAL_SYNTAX[name].ready;
+        const ready = viewed ? "^" : name === "gemini-cli" && round > 0 ? "TB_DONE[\\s\\S]*" + previousSecret + "[\\s\\S]*Type your message" : TERMINAL_SYNTAX[name].ready;
         actions.push({ waitFor: ready, send: `${promptMarker}. Read evidence.txt and report its exact contents; use the imported conversation as context.`, paste: bracketedPaste, delayMs: 1000 });
         // Readline-style editors may repaint one inserted character per cursor
         // move, so their raw echo need not contain the complete marker.
@@ -190,7 +196,7 @@ export async function verifyInstalledBridge(options: WorkerOptions) {
       }
       let events = ownEvents(await exportEvents());
       const captureDeadline = Date.now() + 12_000;
-      while (normalExit && Date.now() < captureDeadline && !events.some(event => event.actor.type === "agent" && JSON.stringify(event.content).includes("TB_DONE") && JSON.stringify(event.content).includes(secret))) {
+      while (normalExit && Date.now() < captureDeadline && !capturedCompletion(events, secret)) {
         await new Promise(done => setTimeout(done, 250)); events = ownEvents(await exportEvents());
       }
       await writeFile(join(root, `round-${round}-events.json`), JSON.stringify(events, null, 2));
@@ -198,7 +204,7 @@ export async function verifyInstalledBridge(options: WorkerOptions) {
       if (round === 0) {
         report.gates.modelContext = provider.state.modelContext;
         report.gates.newToolUse = linkedRead(events, secret);
-        report.gates.automaticCapture = linkedRead(events, secret) && events.some(event => event.actor.type === "agent" && JSON.stringify(event.content).includes(secret));
+        report.gates.automaticCapture = linkedRead(events, secret) && capturedCompletion(events, secret);
         report.gates.historyRendering = mode === "native-import" && [historyMarker, assistantMarker].every(marker => screen.observedMarkers.includes(marker));
         report.gates.bootstrapDisclosure = mode === "bootstrap" && plan.notes.some(note => note.includes("NEW"));
         await reconcileBootstrapContinuations(repo);
@@ -210,7 +216,8 @@ export async function verifyInstalledBridge(options: WorkerOptions) {
           proof: "installed-capture", artifacts: report.artifacts, ledgerEvents: await exportEvents() } satisfies SourceSnapshot, null, 2));
         if (!firstTarget || !normalExit || !report.gates.automaticCapture || target.supportsNativeResume === false) break;
       } else {
-        report.gates.subsequentResume = linkedRead(events.filter(event => event.stream?.id === firstTarget!.id), secret) && provider.state.contexts.slice(contextStart).some(Boolean);
+        const resumed = events.filter(event => event.stream?.id === firstTarget!.id);
+        report.gates.subsequentResume = linkedRead(resumed, secret) && capturedCompletion(resumed, secret) && provider.state.contexts.slice(contextStart).some(Boolean);
       }
     }
     report.gates.normalExit = normalExit;
