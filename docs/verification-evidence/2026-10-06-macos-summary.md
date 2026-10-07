@@ -5,9 +5,9 @@ model certification. Capture used clean merged cledger `f9853f7`; the hosted
 workflow also checks out the entire library dependency at that revision.
 A final local hub rerun used clean copies of both cledger and annals
 (`dcd06c0`), avoiding both dirty sibling working trees. Fresh captures and all
-twelve directed hub/mode scenarios passed, as did all 141 unit/integration tests.
+twelve directed hub/mode scenarios passed, as did all 142 unit/integration tests.
 
-- The full unit/integration suite passes 141 tests with zero skips, including
+- The full unit/integration suite passes 142 tests with zero skips, including
   real terminal keyboard negotiation and user input cancelling delayed submission.
 - Actual captured Pi 0.87.1 history completed native import, context, a new linked
   read/result, automatic capture, lineage, exact native resume and normal exit in
@@ -121,3 +121,8 @@ A later hosted Mac Codex report retained one Kimi timeout with `/exit` left in
 its slash-command composer after successful read/capture. The installed driver
 now uses Kimi’s documented double Ctrl-D native exit confirmation. The actual
 captured Codex-source bootstrap and second exact-ID resume passed locally.
+
+The same Mac OpenCode campaign retained public model-list ETIMEDOUT fallbacks
+for Gemini→OpenCode and OpenCode→Kilo native import. The bounded model-list
+deadline is now thirty seconds. Plans retain the actual fallback cause, and
+environmental failures are reported as blocked instead of unverified formats.

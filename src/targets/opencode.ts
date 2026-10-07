@@ -593,12 +593,12 @@ export function buildImportPayload(
 
 /** `provider/model` entries as `opencode models` prints them, one per line. */
 function availableModels(cwd: string, binary = "opencode", name: "opencode" | "kilo" = "opencode"): string[] {
-  const result = spawnSync(binary, ["models"], { encoding: "utf8", cwd, timeout: 10_000 });
+  const result = spawnSync(binary, ["models"], { encoding: "utf8", cwd, timeout: 30_000 });
   if (result.status !== 0) {
     const code = (result.error as NodeJS.ErrnoException | undefined)?.code;
     throw new FabricationUnsupportedError(
       `${binary} models failed (${code ?? result.signal ?? `exit ${result.status}`}); cannot select a dispatchable native model`,
-      name,
+      name, "environment",
     );
   }
   return (result.stdout ?? "")
@@ -647,7 +647,7 @@ export function createOpenCodeTarget(name: "opencode" | "kilo" = "opencode"): Ta
   ): Promise<LaunchPlan> {
     const version = opencodeVersion(binary);
     if (!version) {
-      throw new FabricationUnsupportedError("could not determine opencode version", name);
+      throw new FabricationUnsupportedError("could not determine opencode version", name, "environment");
     }
     const notes: string[] = [];
     if (!prefixes.some((p) => version.startsWith(p))) {
@@ -675,7 +675,7 @@ export function createOpenCodeTarget(name: "opencode" | "kilo" = "opencode"): Ta
       throw new FabricationUnsupportedError(
         "could not list opencode models, so the fabricated session would have no provider " +
           "opencode can dispatch with",
-        name,
+        name, "environment",
       );
     }
     const substitutionNote = modelSubstitutionNote(model);

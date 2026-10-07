@@ -16,6 +16,8 @@ export interface LaunchPlan {
    * stable anchor for recording source→target lineage.
    */
   fabricatedConversationId?: string;
+  /** Why native fabrication fell back; environment failures are not format incompatibility. */
+  nativeImportFallback?: { kind: "format" | "environment"; reason: string };
   /** Ordered ids of source events the fabricated target actually contains. */
   importedSourceEventIds?: string[];
 }
@@ -51,6 +53,7 @@ export class FabricationUnsupportedError extends Error {
   constructor(
     message: string,
     public readonly cliName: CliName,
+    public readonly kind: "format" | "environment" = "format",
   ) {
     super(message);
   }

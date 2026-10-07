@@ -116,6 +116,7 @@ export async function buildPlan(
   const history = lineage.parentOf.has(summary.id)
     ? resolveLineageHistory(summary, availableConversations, lineage)
     : { summary, notes: [] };
+  let nativeImportFallback: LaunchPlan["nativeImportFallback"];
   if (!useBootstrap) {
     try {
       const plan = await target.fabricate(history.summary, cwd, { replayReasoning });
@@ -134,6 +135,7 @@ export async function buildPlan(
       return plan;
     } catch (err) {
       if (!(err instanceof FabricationUnsupportedError)) throw err;
+      nativeImportFallback = { kind: err.kind, reason: err.message };
       process.stderr.write(
         `turnbridge: ${err.message}; falling back to bootstrap rehydration\n`,
       );
@@ -142,6 +144,7 @@ export async function buildPlan(
   const bootstrapSummary = { ...history.summary, bootstrapToken: randomUUID() };
   const transcript = await writeBootstrapTranscript(bootstrapSummary);
   const plan = target.bootstrap(bootstrapSummary, cwd, transcript.path);
+  if (nativeImportFallback) plan.nativeImportFallback = nativeImportFallback;
   await recordPendingBootstrap(repo, { token: bootstrapSummary.bootstrapToken, source: summary.id, targetCli: target.name,
     importedThroughSeq: Math.max(...summary.events.map(event => event.stream?.seq ?? 0), 0),
     sourceEventIds: history.summary.events.map(event => event.id), version: turnbridgeVersion() });

@@ -109,7 +109,11 @@ export async function verifyInstalledBridge(options: WorkerOptions) {
     process.chdir(repoPath);
     const lineage = await readLineage(repo, true);
     const plan = await buildPlan(repo, target, summary, repoPath, mode === "bootstrap", lineage, sources, false);
-    if (mode === "native-import" && !plan.fabricatedConversationId) { report.status = "unsupported"; report.reason = "Installed version cannot fabricate native history; planner selected bootstrap"; return report; }
+    if (mode === "native-import" && !plan.fabricatedConversationId) {
+      report.status = plan.nativeImportFallback?.kind === "environment" ? "blocked" : "unsupported";
+      report.reason = "Native import fell back to bootstrap: " + (plan.nativeImportFallback?.reason ?? "no native session was fabricated");
+      return report;
+    }
     provider.state.transcriptPath = plan.notes.find(note => note.startsWith("transcript: "))?.slice("transcript: ".length) ?? "";
     // Use the designated foundation's public ledger read API: large native system
     // records can exceed bounded subprocess stdout. This never performs backfill.

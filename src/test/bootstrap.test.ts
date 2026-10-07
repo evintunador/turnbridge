@@ -3,6 +3,10 @@ import test from "node:test";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { buildPlan } from "../resume.js";
+import { readLineage } from "../lineage.js";
+import { targets } from "../targets/index.js";
+import { FabricationUnsupportedError } from "../targets/types.js";
 import { writeBootstrapTranscript } from "../bootstrap.js";
 import { listConversations } from "../conversations.js";
 import { cleanupRepo, makeTempRepo, seedConversation } from "./helpers.js";
@@ -95,5 +99,22 @@ test("reported size grows with a larger transcript", async () => {
     } finally {
       await cleanupRepo(repo);
     }
+  });
+});
+
+
+test("environmental native import failures retain their cause through a disclosed bootstrap fallback", async () => {
+  await withTurnbridgeHome(async () => {
+    const repo = await makeTempRepo();
+    try {
+      await seedConversation(repo, `codex:${SID}`, "codex", [{ role: "user", text: "keep this visible history", seq: 0 }]);
+      const convs = await listConversations(repo, { all: true });
+      const target = { ...targets.pi, async fabricate() { throw new FabricationUnsupportedError("models failed (ETIMEDOUT)", "pi", "environment"); } };
+      const plan = await buildPlan(repo, target, convs[0]!, repo.root, false, await readLineage(repo), convs, false);
+      assert.deepEqual(plan.nativeImportFallback, { kind: "environment", reason: "models failed (ETIMEDOUT)" });
+      assert.equal(plan.fabricatedConversationId, undefined);
+      assert(plan.notes.some(note => note.includes("NEW")));
+      assert.match(await readFile(plan.notes.find(note => note.startsWith("transcript: "))!.slice("transcript: ".length), "utf8"), /keep this visible history/);
+    } finally { await cleanupRepo(repo); }
   });
 });

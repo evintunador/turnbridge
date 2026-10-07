@@ -148,3 +148,8 @@ installed CLI’s own session, never a verifier-printed ledger transcript.
 Kimi verification exits through its native double Ctrl-D confirmation, following
 [its keyboard documentation](https://moonshotai.github.io/kimi-code/en/reference/keyboard.html).
 This avoids leaving `/exit` in slash-command autocomplete after a completed turn.
+
+Native fallback plans retain a structured format/environment cause. Installed
+verification reports an unavailable native environment as blocked and preserves
+its diagnostic reason, separately from unsupported formats. OpenCode/Kilo’s
+read-only model discovery uses a bounded thirty-second startup deadline.
