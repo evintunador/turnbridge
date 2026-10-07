@@ -110,7 +110,7 @@ npm run verify:plan # planned installed-TUI hub matrix (does not launch CLIs)
 
 The [CLI integration program](docs/CLI_INTEGRATION_PROGRAM.md) documents the
 implemented twenty-target roster, exact-version evidence and known limitations.
-Claude, Codex, OpenCode, Pi, Qwen, Goose and Kilo have native import writers; every
+Claude, Codex, OpenCode, Pi, Qwen, Gemini, Goose and Kilo have native import writers; every
 roster target has a transcript bootstrap route. Implemented syntax is distinct
 from installed certification: authentication blockers, native runtime failures,
 and untested versions remain visible in the reports.

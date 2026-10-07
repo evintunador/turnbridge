@@ -161,7 +161,7 @@ export async function verifyInstalledBridge(options: WorkerOptions) {
         // resumed messages. Wait for that session's actual last answer first.
         // Viewing already established readiness; a retained footer may not be
         // repainted after scrolling, so do not wait for the same bytes again.
-        const ready = viewed ? "^" : name === "gemini-cli" && round > 0 ? "TB_DONE[\\s\\S]*" + previousSecret + "[\\s\\S]*Type your message" : TERMINAL_SYNTAX[name].ready;
+        const ready = viewed ? "^" : name === "gemini-cli" ? (round > 0 ? "TB_DONE[\\s\\S]*" + previousSecret : assistantMarker) + "[\\s\\S]*Type your message" : TERMINAL_SYNTAX[name].ready;
         actions.push({ waitFor: ready, send: `${promptMarker}. Read evidence.txt and report its exact contents; use the imported conversation as context.`, paste: bracketedPaste, delayMs: 1000 });
         // Readline-style editors may repaint one inserted character per cursor
         // move, so their raw echo need not contain the complete marker.

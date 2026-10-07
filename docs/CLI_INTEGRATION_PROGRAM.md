@@ -9,10 +9,10 @@ implementation or a contributor's dirty sibling checkout for release proof.
 
 Follow cledger's market-relevant CLI roster, currently twenty products. A roster
 entry has an implemented bootstrap route, but syntax alone is not installed
-certification. Native import writers exist for Claude, Codex, OpenCode, Pi, Qwen, Goose
+certification. Native import writers exist for Claude, Codex, OpenCode, Pi, Qwen, Gemini, Goose
 and Kilo; exact-ID resume is unavailable in the Aider and Continue adapters.
 
-These three CLIs are also verification hubs. Test every other CLI both into and
+Claude, Codex and OpenCode are the verification hubs. Test every other CLI both into and
 out of each hub, plus hub-to-hub routes. Deduplication yields 108 directed routes,
 216 OS-specific routes, and 432 native-import/bootstrap scenarios. Same-CLI
 resume is tested within each scenario, rather than as a separate cross-CLI route.
@@ -70,7 +70,7 @@ provider requests and automatic ledger observations before any backfill.
    and native resume. `smoke:interactive` now uses disposable profiles, and the
    old script is a compatibility wrapper.
 3. All twenty targets have bootstrap syntax. `turnbridge targets` separates native
-   import, exact native resume and bootstrap. Pi/Qwen fold foreign tools, visible
+   import, exact native resume and bootstrap. Pi/Qwen/Gemini fold foreign tools, visible
    thinking and attachment references into labeled text, preserving content without
    claiming executable native foreign calls.
 4. `verify:program` creates real captured source snapshots, then exercises both

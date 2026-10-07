@@ -1,6 +1,6 @@
 # Native visible-text imports
 
-Pi, Qwen and Goose intentionally represent foreign tool calls, results, visible
+Pi, Qwen, Gemini and Goose intentionally represent foreign tool calls, results, visible
 thinking and attachment references as labeled text. They retain visible content
 without forging provider signatures or executable foreign function calls.
 
@@ -8,6 +8,7 @@ without forging provider signatures or executable foreign function calls.
 |---|---|---|
 | Pi | 0.87.x; version 3 header, linked message IDs, assistant API/provider/usage envelope | `pi --session FILE` |
 | Qwen | 0.24.x; project-scoped JSONL, user/model parts and UUID parent chain | `qwen --resume ID` |
+| Gemini | 0.61.x; project-registered JSONL metadata and user/gemini text records | `gemini --list-sessions` registers the project; `gemini --resume ID` loads the new file |
 | Goose | 1.52.x; Goose's public Pi JSONL converter owns database insertion | `goose session import FILE`, then exact-ID resume with history |
 | Kilo | 7.8.x; OpenCode-compatible native import payload | `kilo import FILE`, then `kilo -s ID` |
 
@@ -43,3 +44,9 @@ letters and digits becomes a hyphen (including underscores, spaces, periods and
 Unicode). This was checked against the installed 0.24.6 implementation and an
 actual import/resume under such a path; replacing only path separators fails on
 GitHub runner directories.
+
+Gemini project registration uses its public session-list command, then reads the
+native project registry without rewriting it. The writer preserves native
+user/gemini text records and original event timestamps, creates a new private
+JSONL file, and passes the exact generated session ID to native resume. Unknown
+versions or unavailable project registration fall back to transcript bootstrap.

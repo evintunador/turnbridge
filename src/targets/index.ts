@@ -7,6 +7,7 @@ import { CLI_CATALOG } from "../cli-catalog.js";
 import { bootstrapTarget } from "./bootstrap-targets.js";
 import { textImportTarget } from "./text-import.js";
 import { gooseTarget } from "./goose.js";
+import { geminiTarget } from "./gemini.js";
 
 export const targets: Record<CliName, TargetAdapter> = {
   ...Object.fromEntries(CLI_CATALOG.filter(cli => !["claude-code", "codex", "opencode"].includes(cli.id)).map(cli => [cli.id, bootstrapTarget(cli.id)])) as Record<CliName, TargetAdapter>,
@@ -17,6 +18,7 @@ export const targets: Record<CliName, TargetAdapter> = {
   "qwen-code": textImportTarget("qwen-code"),
   kilo: createOpenCodeTarget("kilo"),
   goose: gooseTarget,
+  "gemini-cli": geminiTarget,
 };
 
 export function targetFor(name: CliName): TargetAdapter {

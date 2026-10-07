@@ -5,9 +5,9 @@ model certification. Capture used clean merged cledger `f9853f7`; the hosted
 workflow also checks out the entire library dependency at that revision.
 A final local hub rerun used clean copies of both cledger and annals
 (`dcd06c0`), avoiding both dirty sibling working trees. Fresh captures and all
-twelve directed hub/mode scenarios passed, as did all 136 unit/integration tests.
+twelve directed hub/mode scenarios passed, as did all 137 unit/integration tests.
 
-- The full unit/integration suite passes 136 tests with zero skips, including
+- The full unit/integration suite passes 137 tests with zero skips, including
   real terminal keyboard negotiation and user input cancelling delayed submission.
 - Actual captured Pi 0.87.1 history completed native import, context, a new linked
   read/result, automatic capture, lineage, exact native resume and normal exit in
@@ -75,3 +75,9 @@ Screen reconstruction samples rendered lines before destructive terminal updates
 retaining answers that are cleared during normal exit within the same PTY read.
 A regression checks that behavior, and the retained Crush transcript was visually
 inspected with the imported transcript read, fresh file result and answer visible.
+
+Gemini 0.61.0 now has a native visible-text writer. Actual Claude, Codex and
+OpenCode source captures passed every native continuation gate into Gemini,
+including exact-ID resume; Claude/OpenCode regressions used project paths with
+spaces, underscores and punctuation. Project registration uses the public CLI
+without modifying its registry. The full hosted run includes this eighth writer.

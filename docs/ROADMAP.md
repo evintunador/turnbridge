@@ -7,7 +7,7 @@ being repeated here.
 ## CLI coverage
 
 - All twenty roster targets now have bootstrap adapters; Claude, Codex, OpenCode,
-  Pi, Qwen, Goose and Kilo have native import writers. Continue expanding exact-version
+  Pi, Qwen, Gemini, Goose and Kilo have native import writers. Continue expanding exact-version
   evidence through the [CLI integration program](CLI_INTEGRATION_PROGRAM.md).
 - Resolve upstream authentication/runtime blockers and exact-ID resume limitations
   without hiding them in the matrix. Keep unsupported native imports separate
