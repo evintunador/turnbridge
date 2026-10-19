@@ -87,3 +87,8 @@ test("runLaunchPlan reports a launch failure and returns 1 when the command cann
   assert.equal(code, 1);
   assert.ok(writes.some((w) => w.includes("failed to launch")));
 });
+
+test("native CLI termination by signal is propagated as a failure exit code", () => {
+  const code = runLaunchPlan({ command: process.execPath, args: ["-e", "process.kill(process.pid, 'SIGTERM')"], cwd: process.cwd(), notes: [] });
+  assert.equal(code, 143);
+});

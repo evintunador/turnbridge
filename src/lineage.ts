@@ -14,6 +14,8 @@ export interface ContinuationRecord {
   sourceEventIds?: string[];
   /** Target CLI the bridge fabricated into. */
   targetCli: string;
+  mode?: "native-import" | "bootstrap";
+  bootstrapPromptEventId?: string;
   occurredAt: string;
 }
 
@@ -49,6 +51,8 @@ export async function recordContinuation(
         imported_through_seq: rec.importedThroughSeq,
         ...(rec.sourceEventIds ? { source_event_ids: rec.sourceEventIds } : {}),
         target_cli: rec.targetCli,
+        ...(rec.mode ? { mode: rec.mode } : {}),
+        ...(rec.bootstrapPromptEventId ? { bootstrap_prompt_event_id: rec.bootstrapPromptEventId } : {}),
       },
     },
   ]);
@@ -69,6 +73,8 @@ function parseRecord(event: EvidenceEvent): ContinuationRecord | null {
       ? { sourceEventIds: [...sourceEventIds] as string[] }
       : {}),
     targetCli: typeof c["target_cli"] === "string" ? c["target_cli"] : "unknown",
+    ...(c["mode"] === "bootstrap" || c["mode"] === "native-import" ? { mode: c["mode"] } : {}),
+    ...(typeof c["bootstrap_prompt_event_id"] === "string" ? { bootstrapPromptEventId: c["bootstrap_prompt_event_id"] } : {}),
     occurredAt: event.occurred_at,
   };
 }

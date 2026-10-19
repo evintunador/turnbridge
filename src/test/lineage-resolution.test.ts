@@ -80,6 +80,21 @@ function graph(records: ContinuationRecord[]): Lineage {
 const A = "claude-code:a";
 const B = "codex:b";
 const C = "opencode:c";
+
+test("bootstrap with unavailable origins keeps each continuation once and omits its bootstrap prompt", () => {
+  const prompt = event("bootstrap-prompt", B, 0, "2026-01-01T00:00:00.000Z", "[turnbridge bootstrap token] read history");
+  const work = event("bootstrap-work", B, 1, "2026-01-01T00:01:00.000Z", "continued work");
+  const child = summary(B, [prompt, work]);
+  const edge: ContinuationRecord = {
+    ...record(A, B, "2026-01-02T00:00:00.000Z", ["missing-origin"]),
+    mode: "bootstrap", bootstrapPromptEventId: prompt.id,
+  };
+  const result = resolveLineageHistory(child, [child], graph([edge]));
+  assert.deepEqual(result.summary.events.map(item => item.id), [work.id]);
+  assert.match(result.notes.join("\n"), /original events.*unavailable/);
+  assert.doesNotMatch(result.notes.join("\n"), /using the captured copy/);
+});
+
 const a1 = event("ev2-a1", A, 0, "2026-01-01T00:00:00.000Z", "original question");
 const a2 = event("ev2-a2", A, 1, "2026-01-01T00:01:00.000Z", "assistant:original answer");
 const bNotice = event(

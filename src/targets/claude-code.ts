@@ -7,6 +7,7 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import { bootstrapPrompt } from "../bootstrap.js";
 import { binaryOnPath } from "../launch.js";
+import { toolInput } from "../tool-input.js";
 import {
   cliLabel,
   importSourceLabel,
@@ -25,7 +26,7 @@ import { FabricationUnsupportedError, type LaunchPlan, type TargetAdapter } from
 const VALIDATED_VERSION_PREFIX = "2.";
 
 function claudeVersion(): string | null {
-  const result = spawnSync("claude", ["--version"], { encoding: "utf8" });
+  const result = spawnSync("claude", ["--version"], { encoding: "utf8", timeout: 10_000 });
   if (result.status !== 0) return null;
   const match = result.stdout.match(/(\d+\.\d+\.\d+)/);
   return match ? match[1]! : null;
@@ -99,8 +100,7 @@ function convertBlocks(
       case "tool_use": {
         const id = typeof block.id === "string" ? block.id : `toolu_tb_${randomUUID().slice(0, 8)}`;
         seenToolUseIds.add(id);
-        const input =
-          block.input && typeof block.input === "object" ? block.input : { value: block.input ?? null };
+        const input = toolInput(block.input);
         out.push({ type: "tool_use", id, name: block.name ?? "ImportedTool", input });
         break;
       }
@@ -193,7 +193,7 @@ export function buildSessionLines(
     const blocks = convertBlocks(content.blocks, seenToolUseIds);
     if (blocks.length === 0) continue;
     // tool results ride on user lines in Claude's format
-    const type = event.actor.type === "human" || content.role === "tool_result" ? "user" : "assistant";
+    const type = content.role === "user" || event.actor.type === "human" || content.role === "tool_result" ? "user" : "assistant";
     const spec: LineSpec = {
       type,
       content: blocks,
@@ -281,7 +281,7 @@ export const claudeCodeTarget: TargetAdapter = {
     const sessionId = randomUUID();
     // resume lookup is scoped to the project dir encoded from the launch cwd
     const dir = join(projectsDir(), encodeProjectDir(cwd));
-    await mkdir(dir, { recursive: true });
+    await mkdir(dir, { recursive: true, mode: 0o700 });
     const path = join(dir, `${sessionId}.jsonl`);
     const importedSourceEventIds: string[] = [];
     const lines = buildSessionLines(
@@ -293,7 +293,7 @@ export const claudeCodeTarget: TargetAdapter = {
       importedSourceEventIds,
     );
     const body = lines.map((l) => JSON.stringify(l)).join("\n") + "\n";
-    await writeFile(path, body);
+    await writeFile(path, body, { mode: 0o600, flag: "wx" });
 
     notes.push(
       `fabricated Claude Code session ${sessionId} from ${cliLabel(summary.source)} history (${summary.turnCount} turns)`,

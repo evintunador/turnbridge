@@ -71,13 +71,13 @@ if (process.env.GITHUB_OUTPUT) {
       (r) => `| ${r.name} (\`${r.npmPackage}\`) | \`${r.prefix}\` | \`${r.latest}\` | ${r.ok ? "validated" : "**drift**"} |`,
     ),
     "",
-    "Revalidation is a local job — CI cannot do it (see the workflow's header comment).",
+    "Installed scripted revalidation runs in installed-bridges.yml on macOS and Linux; live provider evidence is a separate tier.",
     "Steps for each drifted target:",
     "1. Install the new release, then re-verify the fabrication spec (`" +
       rows.filter((r) => !r.ok).map((r) => r.spec).join("`, `") + "`) against a session it authored.",
-    "2. Run `npm run smoke:interactive`, plus the headless probes in `scripts/` that touch the",
+    "2. Run `npm run verify:program` against a clean merged cledger checkout and retain exact-version evidence. Supplement with explicitly budgeted live-provider canaries and probes that touch the",
     "   drifted target (content recall, structured tool replay, large history).",
-    "3. Widen `VALIDATED_VERSION_PREFIX` (or amend the writer) in the adapter, and record the",
+    "3. Review both-OS route regressions before widening `VALIDATED_VERSION_PREFIX` (or amending the writer), and record the",
     "   evidence in the spec's revalidation log.",
   ].join("\n");
   await appendFile(

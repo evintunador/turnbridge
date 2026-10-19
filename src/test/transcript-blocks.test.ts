@@ -60,14 +60,24 @@ test("turnContent parses a well-formed payload", () => {
   assert.deepEqual(content, { role: "user", blocks: [{ type: "text", text: "hi" }] });
 });
 
+test("provider developer instructions and non-turn records are not visible replay", () => {
+  const hidden = makeEvent({ role: "developer", blocks: [{ type: "text", text: "HIDDEN_PROVIDER_INSTRUCTIONS" }] });
+  const visible = makeEvent({ role: "user", blocks: [{ type: "text", text: "VISIBLE_USER" }] }, { human: true });
+  assert.equal(turnContent(hidden), null);
+  assert.equal(turnContent({ ...visible, kind: "context_injection" }), null);
+  const transcript = renderTranscript(makeSummary([hidden, visible]));
+  assert.match(transcript, /VISIBLE_USER/);
+  assert.doesNotMatch(transcript, /HIDDEN_PROVIDER_INSTRUCTIONS/);
+});
+
 test("turnContent returns null for non-object content", () => {
   assert.equal(turnContent(makeEvent("just a string")), null);
   assert.equal(turnContent(makeEvent(null)), null);
   assert.equal(turnContent(makeEvent(42)), null);
 });
 
-test("turnContent returns null when role is missing or not a string", () => {
-  assert.equal(turnContent(makeEvent({ blocks: [] })), null);
+test("turnContent infers omitted roles from conversation actors but rejects invalid roles", () => {
+  assert.deepEqual(turnContent(makeEvent({ blocks: [] })), { role: "assistant", blocks: [] });
   assert.equal(turnContent(makeEvent({ role: 5, blocks: [] })), null);
 });
 

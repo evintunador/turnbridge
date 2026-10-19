@@ -1,20 +1,8 @@
-# Watches the target CLIs' npm releases and flags when they move outside the
-# version prefixes the fabrication adapters were validated against
-# (docs/specs/ are reverse-engineered and version-pinned by design).
-#
-# Daily check → open/update a pinned tracking issue on drift, close it when
-# drift clears. Reporting only, deliberately: this workflow never writes to
-# the repo and never opens a PR.
-#
-# Why not auto-draft the PR (considered and rejected 2026-08-02): CI cannot
-# validate a pin. The probes that earn one need both target CLIs installed, a
-# TTY for the interactive smoke test, and paid model credentials per provider
-# to make the recall turns real. So any PR CI opened would be a mechanical
-# one-line pin bump with nothing behind it — saving a trivial edit while
-# creating a mergeable artifact that asserts a validation nobody performed.
-# An issue cannot be merged; that asymmetry is the whole point. An agent-drafted
-# PR (an earlier idea, needing an ANTHROPIC_API_KEY secret) hits the same wall
-# for the same reason — the key was never the binding constraint.
+# Daily observation of historical format prefixes for the original three writers.
+# This job reports drift; it never certifies versions or promotes pins. The
+# integration-maintenance workflow separately tests candidate runtimes through
+# real installed macOS/Linux PTYs and opens draft evidence proposals. Live model
+# and provider certification remains a separate, explicitly configured tier.
 name: adapter-drift
 on:
   schedule:

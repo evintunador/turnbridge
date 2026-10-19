@@ -78,8 +78,10 @@ export function resolveLineageHistory(
     }
 
     const copied = selectedEvents.filter((event) => atOrBefore(event, parent.occurredAt));
-    const originatedHere = selectedEvents.filter((event) => !atOrBefore(event, parent.occurredAt));
-    if (copied.length === 0) return originatedHere;
+    const originatedHere = parent.mode === "bootstrap"
+      ? selectedEvents.filter(event => event.id !== parent.bootstrapPromptEventId)
+      : selectedEvents.filter((event) => !atOrBefore(event, parent.occurredAt));
+    if (copied.length === 0 && parent.mode !== "bootstrap") return originatedHere;
 
     resolving.add(summary.id);
     let origins: EvidenceEvent[] | null = null;
@@ -115,9 +117,13 @@ export function resolveLineageHistory(
     resolving.delete(summary.id);
     if (!origins) {
       notes.add(
-        `original events for ${parent.source} are unavailable; using the captured copy in ${summary.id}`,
+        parent.mode === "bootstrap"
+          ? `original events for ${parent.source} are unavailable; retaining only the captured continuation in ${summary.id}`
+          : `original events for ${parent.source} are unavailable; using the captured copy in ${summary.id}`,
       );
-      origins = copied.filter((event) => !isTurnbridgeNotice(event));
+      // Bootstrap reads a transcript into a fresh session; it has no native
+      // history copy. Its own turns are already retained in originatedHere.
+      origins = parent.mode === "bootstrap" ? [] : copied.filter((event) => !isTurnbridgeNotice(event));
     }
     return [...origins, ...originatedHere];
   };

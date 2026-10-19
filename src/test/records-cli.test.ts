@@ -48,7 +48,9 @@ test("records CLI uses cledger's exact namespace and does not add transport wiri
     const hookBefore = await readFile(hookPath, "utf8");
     const fetchBefore = await git(["config", "--get-all", "remote.origin.fetch"], { cwd: repo.root });
     assert.match(hookBefore, /cledger.*transport-push|conversation-ledger\/dist\/cli\.js/);
-    assert.doesNotMatch(hookBefore, /turnbridge/);
+    // Checkout directories may themselves contain "turnbridge" (as on GitHub
+    // runners). Reject Turnbridge transport invocations, not those paths.
+    assert.doesNotMatch(hookBefore, /(?:^|[\s"/])(?:turnbridge|tb)(?:["\s]+)transport-push|turnbridge\/dist\/cli\.js/);
     assert.match(fetchBefore, /refs\/notes\/conversation-ledger:refs\/notes\/cledger-incoming/);
 
     assert.equal(run(repo.root, ["records", "--help"]).status, 0);

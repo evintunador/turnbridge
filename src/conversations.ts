@@ -72,7 +72,7 @@ export async function listConversations(
       title: deriveTitle(sorted),
       firstActivity: first.occurred_at,
       lastActivity: last.occurred_at,
-      turnCount: sorted.filter((e) => e.kind === "conversation_turn").length,
+      turnCount: sorted.filter((e) => turnContent(e) !== null).length,
       owners: [...owners],
       ownerDisplays: [...ownerDisplays],
       events: sorted,

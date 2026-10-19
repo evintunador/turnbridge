@@ -1,6 +1,8 @@
 import { spawnSync } from "node:child_process";
+import { toolInput } from "../tool-input.js";
 import { randomUUID } from "node:crypto";
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { parse } from "smol-toml";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import type { EvidenceEvent } from "conversation-ledger";
@@ -30,7 +32,7 @@ import { FabricationUnsupportedError, type LaunchPlan, type TargetAdapter } from
 const VALIDATED_VERSION_PREFIXES = ["0.144.", "0.145.", "0.146."];
 
 function codexVersion(): string | null {
-  const result = spawnSync("codex", ["--version"], { encoding: "utf8" });
+  const result = spawnSync("codex", ["--version"], { encoding: "utf8", timeout: 10_000 });
   if (result.status !== 0) return null;
   const match = result.stdout.match(/(\d+\.\d+\.\d+)/);
   return match ? match[1]! : null;
@@ -130,7 +132,7 @@ function functionCallLine(timestamp: string, callId: string, name: string, input
       id: `fc_tb_${callId.slice(-16)}`,
       name,
       // the Responses API carries arguments as a JSON *string*, not an object
-      arguments: JSON.stringify(input ?? {}),
+      arguments: JSON.stringify(toolInput(input)),
       call_id: callId,
     },
   };
@@ -206,6 +208,7 @@ export function buildRolloutLines(
   now: Date,
   replayReasoning = true,
   importedSourceEventIds?: string[],
+  modelProvider = "openai",
 ): RolloutLine[] {
   const nowIso = now.toISOString();
   const replayCount = eligibleReasoning(summary, replayReasoning).length;
@@ -236,7 +239,7 @@ export function buildRolloutLines(
         cli_version: cliVersion,
         source: "cli",
         thread_source: "user",
-        model_provider: "openai",
+        model_provider: modelProvider,
         history_mode: "legacy",
       },
     },
@@ -343,11 +346,19 @@ export const codexTarget: TargetAdapter = {
       );
     }
 
+    let modelProvider = "openai";
+    try {
+      const configPath = join(process.env["CODEX_HOME"] ?? join(homedir(), ".codex"), "config.toml");
+      const config = parse(await readFile(configPath, "utf8"));
+      if (typeof config.model_provider === "string") modelProvider = config.model_provider;
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw new FabricationUnsupportedError("could not read Codex's configured provider; native import would risk changing provider", "codex");
+    }
     const sessionId = randomUUID();
     const now = new Date();
     const { datePath, stamp } = localStamp(now);
     const dir = join(sessionsDir(), datePath);
-    await mkdir(dir, { recursive: true });
+    await mkdir(dir, { recursive: true, mode: 0o700 });
     const path = join(dir, `rollout-${stamp}-${sessionId}.jsonl`);
     const importedSourceEventIds: string[] = [];
     const lines = buildRolloutLines(
@@ -358,9 +369,10 @@ export const codexTarget: TargetAdapter = {
       now,
       opts.replayReasoning,
       importedSourceEventIds,
+      modelProvider,
     );
     const body = lines.map((l) => JSON.stringify(l)).join("\n") + "\n";
-    await writeFile(path, body);
+    await writeFile(path, body, { mode: 0o600, flag: "wx" });
 
     notes.push(
       `fabricated Codex session ${sessionId} from ${cliLabel(summary.source)} history (${summary.turnCount} turns)`,

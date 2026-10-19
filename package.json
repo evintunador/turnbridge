@@ -37,19 +37,31 @@
     "dist",
     "!dist/test",
     "README.md",
-    "LICENSE"
+    "LICENSE",
+    "scripts/setup-pty.mjs"
   ],
   "scripts": {
     "build": "tsc -p tsconfig.json && node -e \"require('fs').chmodSync('dist/cli.js', 0o755)\"",
     "test": "npm run build && node --test \"dist/test/**/*.test.js\"",
-    "smoke:interactive": "npm run build && node scripts/smoke-interactive.mjs",
+    "smoke:interactive": "npm run verify:installed",
+    "verify:plan": "npm run build && node dist/verification/plan.js",
+    "verify:report": "npm run build && node dist/verification/report.js",
+    "verify:installed": "npm run build && node dist/verification/campaign.js",
     "check:adapter-drift": "node scripts/check-adapter-drift.mjs",
     "prepublishOnly": "node -e \"const local=Object.entries(require('./package.json').dependencies).filter(([,v])=>v.startsWith('file:')).map(([n])=>n); if(local.length) { console.error('refusing to publish: local file: dependencies need published versions: '+local.join(', ')); process.exit(1); }\" && npm test",
-    "prepare": "npm run build"
+    "prepare": "npm run build",
+    "verify:program": "npm run build && node dist/verification/program.js",
+    "verify:provision": "node scripts/provision-runtimes.mjs",
+    "verify:candidates": "node scripts/runtime-candidates.mjs",
+    "smoke:legacy": "npm run build && node scripts/smoke-interactive.mjs",
+    "postinstall": "node scripts/setup-pty.mjs"
   },
   "dependencies": {
+    "@xterm/headless": "^6.0.0",
     "annals": "file:../annals",
-    "conversation-ledger": "file:../conversation-ledger"
+    "conversation-ledger": "file:../conversation-ledger",
+    "node-pty": "^1.1.0",
+    "smol-toml": "^1.9.0"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",

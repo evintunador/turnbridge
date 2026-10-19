@@ -1,3 +1,4 @@
+import { constants } from "node:os";
 import { spawnSync } from "node:child_process";
 import type { LaunchPlan } from "./targets/types.js";
 
@@ -17,5 +18,6 @@ export function runLaunchPlan(plan: LaunchPlan): number {
     process.stderr.write(`turnbridge: failed to launch ${plan.command}: ${result.error.message}\n`);
     return 1;
   }
-  return result.status ?? 0;
+  if (result.status !== null) return result.status;
+  return result.signal ? 128 + (constants.signals[result.signal] ?? 1) : 1;
 }
