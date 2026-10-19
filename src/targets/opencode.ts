@@ -104,6 +104,9 @@ interface ImportPart {
   cost?: number;
 }
 
+/** The opencode agent every fabricated message is attributed to. */
+const BRIDGED_AGENT = "build";
+
 /**
  * The provider/model a fabricated session dispatches with.
  *
@@ -226,10 +229,20 @@ export function sourceModels(summary: ConversationSummary): SourceModel[] {
  * opencode→opencode, or a user who registered the same model, keeps its own
  * model — and otherwise a resolvable model is substituted and disclosed.
  *
+ * A substitute is the model opencode itself would start a new session of the
+ * bridged agent with: the first of `configured` (see `configuredModels`) that
+ * this install lists. Only when none is configured or listed does it fall back
+ * to the first listed model, which opencode orders by provider, not by whether
+ * the user can actually dispatch with it.
+ *
  * `available` is `provider/model` as `opencode models` prints it. Exported for
  * tests: the lookup is pure, only the listing shells out.
  */
-export function resolveModel(sourceModels: SourceModel[], available: string[]): ResolvedModel | null {
+export function resolveModel(
+  sourceModels: SourceModel[],
+  available: string[],
+  configured: string[] = [],
+): ResolvedModel | null {
   if (available.length === 0) return null;
   const split = (entry: string) => {
     const at = entry.indexOf("/");
@@ -253,7 +266,8 @@ export function resolveModel(sourceModels: SourceModel[], available: string[]): 
   const substitutedFrom = sourceModels.map(({ model, provider }) =>
     provider && !model.includes("/") ? `${provider}/${model}` : model,
   );
-  return { ...split(available[0]!), substitutedFrom };
+  const substitute = configured.find((entry) => available.includes(entry)) ?? available[0]!;
+  return { ...split(substitute), substitutedFrom };
 }
 
 function resultBody(block: TurnBlock): string {
@@ -483,7 +497,7 @@ export function buildImportPayload(
       info: {
         role: "user",
         time: { created: noticeMs },
-        agent: "build",
+        agent: BRIDGED_AGENT,
         model: messageModel,
         id: noticeId,
         sessionID: sessionId,
@@ -538,13 +552,13 @@ export function buildImportPayload(
     const info: Record<string, unknown> = {
       role,
       time: { created: createdMs },
-      agent: "build",
+      agent: BRIDGED_AGENT,
       id: msgId,
       sessionID: sessionId,
     };
 
     if (role === "assistant") {
-      info.mode = "build";
+      info.mode = BRIDGED_AGENT;
       info.path = { cwd, root: cwd };
       info.cost = 0;
       info.tokens = { total: 0, input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } };
@@ -576,7 +590,7 @@ export function buildImportPayload(
       directory: cwd,
       path: "",
       title: pickerTitle(summary),
-      agent: "build",
+      agent: BRIDGED_AGENT,
       model: { id: model.modelID, providerID: model.providerID },
       version,
       summary: { additions: 0, deletions: 0, files: 0 },
@@ -596,6 +610,27 @@ function availableModels(cwd: string): string[] {
     .split("\n")
     .map((line) => line.trim())
     .filter((line) => line.includes("/") && !line.startsWith("-"));
+}
+
+/**
+ * The models opencode would start a new `BRIDGED_AGENT` session with in `cwd`,
+ * most specific first: that agent's own `model`, then the top-level `model`.
+ * `opencode debug config` is the fully resolved configuration — global and
+ * project files plus `OPENCODE_CONFIG`/`OPENCODE_CONFIG_CONTENT` — so this
+ * honours every place a user can set a default without re-implementing the merge.
+ */
+function configuredModels(cwd: string): string[] {
+  const result = spawnSync("opencode", ["debug", "config"], { encoding: "utf8", cwd });
+  if (result.status !== 0) return [];
+  let config: { model?: unknown; agent?: Record<string, { model?: unknown } | undefined> };
+  try {
+    config = JSON.parse(result.stdout ?? "");
+  } catch {
+    return [];
+  }
+  return [config.agent?.[BRIDGED_AGENT]?.model, config.model].filter(
+    (model): model is string => typeof model === "string" && model.includes("/"),
+  );
 }
 
 /** HEAD of the launch repo, for the step parts. Absent outside a git repo. */
@@ -658,7 +693,7 @@ export const opencodeTarget: TargetAdapter = {
     // unresolvable id is fatal to continuation rather than cosmetic. If we
     // cannot learn what this install can run, fabrication is not safe — fall
     // back to bootstrap instead of writing a session that cannot answer.
-    const model = resolveModel(sourceModels(summary), availableModels(cwd));
+    const model = resolveModel(sourceModels(summary), availableModels(cwd), configuredModels(cwd));
     if (!model) {
       throw new FabricationUnsupportedError(
         "could not list opencode models, so the fabricated session would have no provider " +
